@@ -21,6 +21,9 @@ let currentUser = null;
 let cloudReady = false;
 let syncTimers = new Map();
 let syncingAll = false;
+let lastLocalEditAt = 0;
+const dirtyDates = new Set();
+let cloudPullInFlight = false;
 
 function saveLocalOnly(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -102,16 +105,21 @@ function noteRow(dateKey,item){
   };
 }
 function scheduleDaySync(dateKey){
+  dirtyDates.add(dateKey);
   if(!currentUser||!cloudReady) return;
   if(syncTimers.has(dateKey)) clearTimeout(syncTimers.get(dateKey));
   setCloudState("sync","Sincronizando","Guardando cambios");
-  syncTimers.set(dateKey,setTimeout(()=>syncDayToCloud(dateKey),650));
+  syncTimers.set(dateKey,setTimeout(()=>{
+    syncTimers.delete(dateKey);
+    syncDayToCloud(dateKey);
+  },650));
 }
 async function syncDayToCloud(dateKey){
   if(!currentUser||!cloudReady) return;
   try{
     const {error}=await supabaseClient.from("cuaderno_dias").upsert(dayRow(dateKey),{onConflict:"user_id,fecha"});
     if(error) throw error;
+    dirtyDates.delete(dateKey);
     setCloudState("ok","En la nube",currentUser.email||"Sincronizado");
   }catch(error){
     console.error("Error sincronizando día",error);
@@ -131,6 +139,18 @@ async function upsertNoteToCloud(dateKey,item){
     setCloudState("error","Error Supabase",detail);
   }
 }
+async function flushDirtyDates(){
+  if(!currentUser||!cloudReady||!dirtyDates.size) return;
+  const dates=[...dirtyDates];
+  for(const dateKey of dates){
+    if(syncTimers.has(dateKey)){
+      clearTimeout(syncTimers.get(dateKey));
+      syncTimers.delete(dateKey);
+    }
+    await syncDayToCloud(dateKey);
+  }
+}
+
 async function syncAllLocalToCloud(){
   if(!currentUser||syncingAll) return;
   syncingAll=true;
@@ -160,7 +180,9 @@ async function syncAllLocalToCloud(){
   }
 }
 async function pullCloudData(){
-  if(!currentUser) return;
+  if(!currentUser||cloudPullInFlight) return;
+  cloudPullInFlight=true;
+  const dateToKeep=selectedDate;
   setCloudState("sync","Sincronizando","Descargando tus notas");
   try{
     await flushPendingDeletes();
@@ -209,7 +231,7 @@ async function pullCloudData(){
     }
 
     cloudReady=true;
-    selectedDate=toKey(new Date());
+    selectedDate=dateToKeep||toKey(new Date());
     ensureDay(selectedDate);
     saveLocalOnly();
     renderAll();
@@ -224,6 +246,8 @@ async function pullCloudData(){
       msg.className="auth-message error";
       msg.textContent=detail;
     }
+  }finally{
+    cloudPullInFlight=false;
   }
 }
 async function activateUser(user){
@@ -309,9 +333,10 @@ function loadData(){
   }
 }
 function saveData(syncDate=selectedDate){
+  lastLocalEditAt=Date.now();
   saveLocalOnly();
-  if(currentUser&&cloudReady) scheduleDaySync(syncDate);
-  else setCloudState("local","Solo local","Inicia sesión para sincronizar");
+  scheduleDaySync(syncDate);
+  if(!currentUser||!cloudReady) setCloudState("local","Solo local","Inicia sesión para sincronizar");
 }
 function toKey(date){
   const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,"0"), d=String(date.getDate()).padStart(2,"0");
@@ -443,7 +468,7 @@ el("refreshBtn").onclick=async()=>{
   btn.innerHTML="↻ <span>Actualizando…</span>";
   try{
     if(currentUser){
-      if(cloudReady) await syncAllLocalToCloud();
+      await flushDirtyDates();
       await pullCloudData();
     }else{
       location.reload();
@@ -606,6 +631,21 @@ supabaseClient.auth.onAuthStateChange(async (event, session)=>{
   }
 });
 
+function isEditingNow(){
+  const active=document.activeElement;
+  if(!active) return false;
+  return active.matches?.("input, textarea, select, [contenteditable='true']");
+}
+
+async function refreshFromCloudIfSafe(){
+  if(!currentUser||!cloudReady||cloudPullInFlight||!navigator.onLine) return;
+  if(document.visibilityState!=="visible") return;
+  if(dirtyDates.size||syncTimers.size) return;
+  if(Date.now()-lastLocalEditAt<2500) return;
+  if(isEditingNow()) return;
+  await pullCloudData();
+}
+
 document.addEventListener("visibilitychange",async()=>{
   if(document.visibilityState!=="visible") return;
   try{
@@ -613,15 +653,23 @@ document.addEventListener("visibilitychange",async()=>{
     if(data.session?.user){
       currentUser=data.session.user;
       updateAccountUI();
-      if(!cloudReady) await pullCloudData();
+      await flushDirtyDates();
+      await pullCloudData();
     }
   }catch(error){
     console.error("No se pudo recuperar la sesión",error);
   }
 });
 
-window.addEventListener("online",()=>{if(currentUser&&cloudReady) syncAllLocalToCloud();});
+window.addEventListener("focus",()=>{refreshFromCloudIfSafe().catch(()=>{});});
+window.addEventListener("online",async()=>{
+  if(currentUser&&cloudReady){
+    await flushDirtyDates();
+    await pullCloudData();
+  }
+});
 window.addEventListener("offline",()=>setCloudState("error","Guardado local","Sin conexión"));
+setInterval(()=>{refreshFromCloudIfSafe().catch(()=>{});},10000);
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
 renderAll();
 initAuth();
