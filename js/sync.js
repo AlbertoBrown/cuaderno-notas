@@ -90,8 +90,18 @@ function localNoteForRemote(note, hasVisualColumns) {
   return buildNoteRow(safe, state.user.id, hasVisualColumns);
 }
 
+function errorText(error) {
+  return String(
+    error?.message ||
+    error?.error_description ||
+    error?.error ||
+    error?.statusCode ||
+    "Error desconocido"
+  );
+}
+
 async function pushDay(day) {
-  const syncingDay = { ...day, syncStatus: "syncing" };
+  const syncingDay = { ...day, syncStatus: "syncing", syncError: null };
   await putDay(syncingDay);
 
   const { error } = await supabaseClient
@@ -99,11 +109,11 @@ async function pushDay(day) {
     .upsert(buildDayRow(syncingDay, state.user.id), { onConflict: "user_id,fecha" });
 
   if (error) {
-    await putDay({ ...syncingDay, syncStatus: "error" });
+    await putDay({ ...syncingDay, syncStatus: "error", syncError: errorText(error) });
     throw error;
   }
 
-  await putDay({ ...syncingDay, syncStatus: "synced" });
+  await putDay({ ...syncingDay, syncStatus: "synced", syncError: null });
 }
 
 async function ensureVisualImage(note) {
@@ -165,7 +175,7 @@ async function pushNote(note, hasVisualColumns) {
     return;
   }
 
-  let current = { ...note, syncStatus: "syncing" };
+  let current = { ...note, syncStatus: "syncing", syncError: null };
   await putNote(current);
 
   try {
@@ -182,9 +192,14 @@ async function pushNote(note, hasVisualColumns) {
       pendingBlob: null,
       legacyImageData: hasVisualColumns ? null : current.legacyImageData,
       syncStatus: "synced",
+      syncError: null,
     });
   } catch (error) {
-    await putNote({ ...current, syncStatus: "error" });
+    await putNote({
+      ...current,
+      syncStatus: "error",
+      syncError: errorText(error),
+    });
     throw error;
   }
 }
@@ -211,6 +226,7 @@ export async function pushPending() {
     state.syncStatus = "synced";
   } catch (error) {
     state.syncStatus = "error";
+    state.lastSyncError = errorText(error);
     throw error;
   } finally {
     syncing = false;
@@ -279,6 +295,7 @@ export async function pullAndMerge() {
   }
 
   state.syncStatus = "synced";
+  state.lastSyncError = null;
 }
 
 export async function syncNow() {
