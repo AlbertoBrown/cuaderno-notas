@@ -1,11 +1,11 @@
-const CACHE = "cuaderno-notas-v14";
+const CACHE = "cuaderno-notas-v15";
 const SHELL = [
   "./",
   "./index.html",
-  "./styles.css",
+  "./styles.css?v=15",
   "./manifest.webmanifest",
   "./icon.svg",
-  "./js/app.js",
+  "./js/app.js?v=15",
   "./js/store.js",
   "./js/sync.js",
   "./js/supabase.js",
@@ -13,6 +13,7 @@ const SHELL = [
 ];
 
 self.addEventListener("install", event => {
+  self.skipWaiting();
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));
 });
 
@@ -35,36 +36,31 @@ self.addEventListener("fetch", event => {
   const url = new URL(request.url);
   const sameOrigin = url.origin === self.location.origin;
 
-  if (request.mode === "navigate") {
+  // HTML and application code: network first so a deployed fix is visible immediately.
+  if (
+    request.mode === "navigate" ||
+    (sameOrigin && ["script", "style"].includes(request.destination))
+  ) {
     event.respondWith(
       fetch(request)
         .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE).then(cache => cache.put("./index.html", copy));
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE).then(cache => cache.put(request, copy));
+          }
           return response;
         })
-        .catch(() => caches.match("./index.html"))
+        .catch(async () => {
+          const cached = await caches.match(request);
+          if (cached) return cached;
+          if (request.mode === "navigate") return caches.match("./index.html");
+          return Response.error();
+        })
     );
     return;
   }
 
-  if (sameOrigin && ["script", "style"].includes(request.destination)) {
-    event.respondWith(
-      caches.open(CACHE).then(async cache => {
-        const cached = await cache.match(request);
-        const network = fetch(request)
-          .then(response => {
-            if (response.ok) cache.put(request, response.clone());
-            return response;
-          })
-          .catch(() => null);
-
-        return cached || (await network) || Response.error();
-      })
-    );
-    return;
-  }
-
+  // Static assets: cache first.
   if (sameOrigin && ["image", "manifest"].includes(request.destination)) {
     event.respondWith(
       caches.match(request).then(cached => {
