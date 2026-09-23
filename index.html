@@ -157,60 +157,86 @@
       </section>
 
       <section id="visualNotesView" class="visual-notes-view" hidden>
-        <div class="visual-compose-card">
-          <div class="visual-compose-head">
-            <div>
-              <span class="eyebrow">Apunte visual</span>
-              <h2>Imagen + Prompt<span>.</span></h2>
-              <p>Guarda una foto, captura o documento visual junto al prompt que quieras reutilizar.</p>
-            </div>
-            <div class="visual-date-badge" id="visualDateBadge"></div>
+        <div class="visual-page-header">
+          <div>
+            <span class="eyebrow visual-eyebrow">Apunte visual</span>
+            <h2>Imagen + Prompt<span>.</span></h2>
+            <p>Guarda una foto, captura o documento visual junto al prompt que quieras reutilizar.</p>
           </div>
+          <div class="visual-date-badge" id="visualDateBadge"></div>
+        </div>
 
-          <div class="visual-grid">
+        <div class="visual-compose-grid">
+          <section class="visual-upload-card">
             <div class="image-uploader">
               <div id="visualImagePlaceholder" class="image-placeholder">
-                <span>＋</span>
+                <div class="image-placeholder-icon" aria-hidden="true">
+                  <span class="image-stack">▧</span>
+                  <span class="image-plus">＋</span>
+                </div>
                 <strong>Añade una imagen</strong>
                 <small>Foto, captura de pantalla o documento</small>
-              </div>
-              <img id="visualImagePreview" class="visual-image-preview" alt="Vista previa" hidden />
-              <div class="image-actions">
-                <label class="upload-btn">Elegir imagen
+                <small class="image-format-hint">JPG, PNG · Optimización automática</small>
+                <label class="upload-btn upload-primary">⇧&nbsp;&nbsp;Seleccionar archivo
                   <input id="visualImageInput" type="file" accept="image/*" hidden />
                 </label>
+              </div>
+
+              <div class="visual-preview-wrap">
+                <img id="visualImagePreview" class="visual-image-preview" alt="Vista previa" hidden />
+              </div>
+
+              <div class="image-actions">
                 <label class="upload-btn secondary">Cámara
                   <input id="visualCameraInput" type="file" accept="image/*" capture="environment" hidden />
                 </label>
-                <button id="visualRemoveImageBtn" class="upload-btn danger" type="button" hidden>Quitar</button>
-              </div>
-            </div>
-
-            <div class="visual-form">
-              <label>Título
-                <input id="visualTitleInput" type="text" placeholder="Ej. Lectura de sonda GOA" />
-              </label>
-              <label>Prompt
-                <textarea id="visualPromptInput" placeholder="Ej. Analiza esta imagen y dime qué datos relevantes aparecen..."></textarea>
-              </label>
-              <div class="visual-form-actions">
-                <button id="visualCopyDraftBtn" class="ghost-btn" type="button">Copiar prompt</button>
-                <button id="visualSaveBtn" class="primary-btn" type="button">Guardar apunte</button>
+                <button id="visualRemoveImageBtn" class="upload-btn danger" type="button" hidden>Quitar imagen</button>
               </div>
               <small id="visualImageInfo" class="visual-image-info"></small>
             </div>
-          </div>
+          </section>
+
+          <section class="visual-form-card">
+            <div class="visual-form">
+              <label class="visual-field">
+                <span class="visual-label"><span aria-hidden="true">▤</span> Título</span>
+                <input id="visualTitleInput" type="text" placeholder="Ej. Lectura de sonda GOA" />
+              </label>
+
+              <label class="visual-field">
+                <span class="visual-label-row">
+                  <span class="visual-label"><span aria-hidden="true">◯</span> Prompt</span>
+                  <small id="visualPromptCount">0/2000</small>
+                </span>
+                <textarea id="visualPromptInput" maxlength="2000" placeholder="Ej. Analiza esta imagen y dime qué datos relevantes aparecen..."></textarea>
+              </label>
+
+              <div class="visual-tip">
+                <span aria-hidden="true">💡</span>
+                <p><strong>Consejo:</strong> sé específico sobre lo que quieres extraer de la imagen. Un buen prompt mejora la calidad de los resultados.</p>
+              </div>
+
+              <div class="visual-form-actions">
+                <button id="visualCopyDraftBtn" class="ghost-btn visual-copy-btn" type="button">⧉&nbsp; Copiar prompt</button>
+                <button id="visualSaveBtn" class="primary-btn visual-save-btn" type="button">▱&nbsp; Guardar apunte</button>
+              </div>
+            </div>
+          </section>
         </div>
 
-        <div class="visual-library">
-          <div class="section-head">
-            <div>
-              <span class="eyebrow">Biblioteca</span>
-              <h2>Apuntes visuales</h2>
+        <section class="visual-library">
+          <div class="visual-library-head">
+            <div class="visual-library-title">
+              <span class="visual-library-icon" aria-hidden="true">⌘</span>
+              <div>
+                <h2>Biblioteca de apuntes visuales</h2>
+                <p>Tus imágenes y prompts guardados para reutilizar cuando los necesites.</p>
+              </div>
             </div>
+            <span id="visualLibraryCount" class="visual-library-count">0 apuntes guardados</span>
           </div>
           <div id="visualNotesList" class="visual-notes-list"></div>
-        </div>
+        </section>
       </section>
     </main>
   </div>
