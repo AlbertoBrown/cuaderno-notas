@@ -288,7 +288,8 @@ const TYPE_META = {
   incident: { label: "Incidencia", tone: "orange" },
   error: { label: "Error", tone: "blue" },
   note: { label: "Apunte", tone: "green" },
-  prompt: { label: "Prompt", tone: "yellow" }
+  prompt: { label: "Prompt", tone: "yellow" },
+  visual: { label: "Foto + Prompt", tone: "cream" }
 };
 
 const seed = {
@@ -321,6 +322,9 @@ let data = loadData();
 let selectedDate = toKey(new Date());
 let currentFilter = "all";
 let searchTerm = "";
+let currentView = "today";
+let visualImageData = "";
+let visualImageMeta = null;
 
 const el = id => document.getElementById(id);
 
@@ -393,6 +397,9 @@ function renderAll(){
   renderDateHeader();
   renderDay();
   renderNotes();
+  renderVisualNotes();
+  const badge=el("visualDateBadge");
+  if(badge) badge.textContent=formatDate(fromKey(selectedDate),{day:"2-digit",month:"short",year:"numeric"});
 }
 
 function renderDateHeader(){
@@ -439,6 +446,7 @@ function renderNotes(){
     entries=(ensureDay(selectedDate).items||[]).map(x=>({...x,date:selectedDate}));
   }
 
+  entries=entries.filter(x=>x.type!=="visual");
   if(currentFilter!=="all") entries=entries.filter(x=>x.type===currentFilter);
 
   entries.sort((a,b)=>(b.time||"").localeCompare(a.time||""));
@@ -483,6 +491,138 @@ function renderTasks(){
     row.querySelector("button").onclick=()=>{ensureDay(selectedDate).tasks=tasks.filter(t=>t.id!==task.id);saveData();renderTasks();};
     box.appendChild(row);
   });
+}
+
+function parseVisualBody(body=""){
+  try{
+    const parsed=JSON.parse(body);
+    return parsed&&typeof parsed==="object"?parsed:{prompt:body,imageData:""};
+  }catch{
+    return {prompt:body||"",imageData:""};
+  }
+}
+
+async function compressImageFile(file){
+  if(!file) return null;
+  if(!file.type.startsWith("image/")) throw new Error("El archivo no es una imagen.");
+  const raw=await new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result);
+    reader.onerror=()=>reject(new Error("No se pudo leer la imagen."));
+    reader.readAsDataURL(file);
+  });
+  const img=await new Promise((resolve,reject)=>{
+    const image=new Image();
+    image.onload=()=>resolve(image);
+    image.onerror=()=>reject(new Error("No se pudo abrir la imagen."));
+    image.src=raw;
+  });
+  const maxSide=1280;
+  const scale=Math.min(1,maxSide/Math.max(img.width,img.height));
+  const width=Math.max(1,Math.round(img.width*scale));
+  const height=Math.max(1,Math.round(img.height*scale));
+  const canvas=document.createElement("canvas");
+  canvas.width=width; canvas.height=height;
+  const ctx=canvas.getContext("2d");
+  ctx.drawImage(img,0,0,width,height);
+  let data=canvas.toDataURL("image/jpeg",0.72);
+  if(data.length>1400000){
+    const scale2=Math.min(1,1024/Math.max(width,height));
+    const c2=document.createElement("canvas");
+    c2.width=Math.max(1,Math.round(width*scale2));
+    c2.height=Math.max(1,Math.round(height*scale2));
+    c2.getContext("2d").drawImage(canvas,0,0,c2.width,c2.height);
+    data=c2.toDataURL("image/jpeg",0.58);
+  }
+  return {data,width,height,originalName:file.name||"imagen",originalSize:file.size||0};
+}
+
+function resetVisualComposer(){
+  visualImageData="";
+  visualImageMeta=null;
+  el("visualImagePreview").hidden=true;
+  el("visualImagePreview").removeAttribute("src");
+  el("visualImagePlaceholder").hidden=false;
+  el("visualRemoveImageBtn").hidden=true;
+  el("visualImageInfo").textContent="";
+  el("visualTitleInput").value="";
+  el("visualPromptInput").value="";
+  el("visualImageInput").value="";
+  el("visualCameraInput").value="";
+}
+
+async function handleVisualImage(file){
+  if(!file) return;
+  const info=el("visualImageInfo");
+  info.textContent="Preparando imagen…";
+  try{
+    const result=await compressImageFile(file);
+    visualImageData=result.data;
+    visualImageMeta=result;
+    el("visualImagePreview").src=visualImageData;
+    el("visualImagePreview").hidden=false;
+    el("visualImagePlaceholder").hidden=true;
+    el("visualRemoveImageBtn").hidden=false;
+    const kb=Math.round((visualImageData.length*0.75)/1024);
+    info.textContent=`Imagen optimizada · ${result.width}×${result.height} · ~${kb} KB`;
+  }catch(error){
+    info.textContent=error.message||"No se pudo cargar la imagen.";
+    visualImageData="";
+    visualImageMeta=null;
+  }
+}
+
+function renderVisualNotes(){
+  const list=el("visualNotesList");
+  if(!list) return;
+  const items=(ensureDay(selectedDate).items||[])
+    .filter(x=>x.type==="visual")
+    .sort((a,b)=>(b.createdAt||b.time||"").localeCompare(a.createdAt||a.time||""));
+
+  if(!items.length){
+    list.innerHTML=`<div class="empty-state">Todavía no hay apuntes visuales para este día.<br><small>Añade una imagen y su prompt arriba.</small></div>`;
+    return;
+  }
+
+  list.innerHTML="";
+  for(const item of items){
+    const payload=parseVisualBody(item.body);
+    const card=document.createElement("article");
+    card.className="visual-note-card";
+    card.innerHTML=`
+      ${payload.imageData?`<img src="${payload.imageData}" alt="">`:""}
+      <div class="visual-note-body">
+        <div class="visual-note-meta"><span>${escapeHtml(item.time||"")}</span><span>Imagen + Prompt</span></div>
+        <h3>${escapeHtml(item.title||"Apunte visual")}</h3>
+        <div class="visual-note-prompt">${escapeHtml(payload.prompt||"")}</div>
+        <div class="visual-note-actions">
+          <button class="copy-visual" type="button">Copiar prompt</button>
+          <button class="delete-visual" type="button">Eliminar</button>
+        </div>
+      </div>`;
+    card.querySelector(".copy-visual").onclick=async()=>navigator.clipboard.writeText(payload.prompt||"");
+    card.querySelector(".delete-visual").onclick=()=>{
+      if(!confirm("¿Eliminar este apunte visual?")) return;
+      const day=ensureDay(selectedDate);
+      day.items=day.items.filter(x=>x.id!==item.id);
+      queueDelete(item.id);
+      saveData(selectedDate);
+      flushPendingDeletes().catch(()=>{});
+      renderVisualNotes();
+      renderDateHeader();
+    };
+    list.appendChild(card);
+  }
+}
+
+function showView(view){
+  currentView=view;
+  const visual=view==="visual";
+  el("mainNotebookView").hidden=visual;
+  el("visualNotesView").hidden=!visual;
+  el("dateStrip")?.toggleAttribute?.("hidden",false);
+  el("pageTitle").innerHTML=visual?"Apuntes visuales<span>.</span>":"Mis notas<span>.</span>";
+  if(visual) renderVisualNotes();
 }
 
 function shiftDay(delta){
@@ -578,16 +718,65 @@ el("addTaskBtn").onclick=()=>{
 };
 el("taskInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();el("addTaskBtn").click();}});
 
+el("visualImageInput").addEventListener("change",e=>handleVisualImage(e.target.files?.[0]));
+el("visualCameraInput").addEventListener("change",e=>handleVisualImage(e.target.files?.[0]));
+el("visualRemoveImageBtn").onclick=()=>{
+  visualImageData="";
+  visualImageMeta=null;
+  el("visualImagePreview").hidden=true;
+  el("visualImagePreview").removeAttribute("src");
+  el("visualImagePlaceholder").hidden=false;
+  el("visualRemoveImageBtn").hidden=true;
+  el("visualImageInfo").textContent="";
+  el("visualImageInput").value="";
+  el("visualCameraInput").value="";
+};
+el("visualCopyDraftBtn").onclick=async()=>navigator.clipboard.writeText(el("visualPromptInput").value||"");
+el("visualSaveBtn").onclick=async()=>{
+  const title=el("visualTitleInput").value.trim()||"Apunte visual";
+  const prompt=el("visualPromptInput").value.trim();
+  if(!visualImageData){
+    el("visualImageInfo").textContent="Añade una imagen antes de guardar.";
+    return;
+  }
+  if(!prompt){
+    el("visualPromptInput").focus();
+    el("visualImageInfo").textContent="Escribe el prompt antes de guardar.";
+    return;
+  }
+  const now=new Date();
+  const item={
+    id:crypto.randomUUID(),
+    type:"visual",
+    title,
+    tag:"Imagen + prompt",
+    body:JSON.stringify({prompt,imageData:visualImageData}),
+    time:now.toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"}),
+    createdAt:now.toISOString()
+  };
+  ensureDay(selectedDate).items.push(item);
+  saveData(selectedDate);
+  await upsertNoteToCloud(selectedDate,item);
+  resetVisualComposer();
+  renderVisualNotes();
+  renderDateHeader();
+};
+
 document.querySelectorAll(".nav-item").forEach(btn=>btn.onclick=()=>{
   document.querySelectorAll(".nav-item").forEach(x=>x.classList.remove("active"));
   btn.classList.add("active");
   const view=btn.dataset.view;
-  if(view==="today"){selectedDate=toKey(new Date());if(!data[selectedDate])selectedDate="2026-09-23";currentFilter="all";}
+  if(view==="today"){selectedDate=toKey(new Date());currentFilter="all";}
   if(view==="notes") currentFilter="note";
   if(view==="prompts") currentFilter="prompt";
   if(view==="incidents") currentFilter="incident";
   if(view==="days") currentFilter="all";
-  document.querySelectorAll(".filter-chip").forEach(x=>x.classList.toggle("active",x.dataset.filter===currentFilter));
+  if(view!=="visual"){
+    showView(view);
+    document.querySelectorAll(".filter-chip").forEach(x=>x.classList.toggle("active",x.dataset.filter===currentFilter));
+  }else{
+    showView("visual");
+  }
   renderAll();
 });
 
@@ -703,6 +892,7 @@ window.addEventListener("online",async()=>{
 window.addEventListener("offline",()=>setCloudState("error","Guardado local","Sin conexión"));
 setInterval(()=>{refreshFromCloudIfSafe().catch(()=>{});},10000);
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
+showView("today");
 renderAll();
 setupMobileKeyboardUX();
 initAuth();
