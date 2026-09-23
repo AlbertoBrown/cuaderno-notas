@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111111" />
+  <title>Cuaderno · Notas diarias</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">C</div>
+        <div>
+          <strong>Cuaderno</strong>
+          <span>Notas diarias</span>
+        </div>
+      </div>
+
+      <nav class="side-nav">
+        <button class="nav-item active" data-view="today"><span>⌂</span>Hoy</button>
+        <button class="nav-item" data-view="days"><span>□</span>Días</button>
+        <button class="nav-item" data-view="notes"><span>✎</span>Apuntes</button>
+        <button class="nav-item" data-view="prompts"><span>◌</span>Prompts</button>
+        <button class="nav-item" data-view="incidents"><span>!</span>Incidencias</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button id="exportBtn" class="utility-btn">Exportar datos</button>
+        <button id="importBtn" class="utility-btn">Importar datos</button>
+        <input id="importInput" type="file" accept="application/json" hidden />
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <span class="eyebrow">Cuaderno de control</span>
+          <h1 id="pageTitle">Mis notas<span>.</span></h1>
+        </div>
+        <div class="top-actions">
+          <label class="search-box">
+            <span>⌕</span>
+            <input id="searchInput" placeholder="Buscar en notas..." />
+          </label>
+          <button id="todayBtn" class="ghost-btn">Ir a hoy</button>
+        </div>
+      </header>
+
+      <section class="date-strip">
+        <div class="date-nav">
+          <button id="prevDay" class="circle-btn" aria-label="Día anterior">←</button>
+          <div>
+            <div class="selected-date" id="selectedDateLabel"></div>
+            <div class="selected-date-sub" id="selectedDateSub"></div>
+          </div>
+          <button id="nextDay" class="circle-btn" aria-label="Día siguiente">→</button>
+        </div>
+        <div class="week-row" id="weekRow"></div>
+      </section>
+
+      <section class="content-grid">
+        <div class="feed-column">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">Registro</span>
+              <h2>Notas del día</h2>
+            </div>
+            <button id="newNoteBtn" class="primary-btn">+ Nueva nota</button>
+          </div>
+
+          <div class="filter-row">
+            <button class="filter-chip active" data-filter="all">Todas</button>
+            <button class="filter-chip" data-filter="error">Errores</button>
+            <button class="filter-chip" data-filter="incident">Incidencias</button>
+            <button class="filter-chip" data-filter="note">Apuntes</button>
+            <button class="filter-chip" data-filter="prompt">Prompt</button>
+          </div>
+
+          <div id="notesList" class="notes-list"></div>
+        </div>
+
+        <div class="detail-column">
+          <article class="daily-card hero-card">
+            <div class="daily-card-top">
+              <div>
+                <span class="eyebrow">Página diaria</span>
+                <h2 id="dailyTitle">Cuaderno diario<span>.</span></h2>
+              </div>
+              <div class="mood-art" aria-hidden="true">
+                <div class="sun"></div>
+                <div class="mountain m1"></div>
+                <div class="mountain m2"></div>
+              </div>
+            </div>
+
+            <section class="prompt-panel">
+              <div class="panel-title">
+                <div><span class="icon-badge">💡</span><strong>Prompt del día</strong></div>
+                <button id="copyPromptBtn" class="icon-btn" title="Copiar prompt">⧉</button>
+              </div>
+              <textarea id="promptInput" placeholder="Escribe aquí qué quieres analizar, comprobar o investigar hoy..."></textarea>
+              <div class="prompt-actions">
+                <button class="mini-chip" data-prompt="Analiza los errores de hoy y detecta patrones que se repiten.">Analizar errores</button>
+                <button class="mini-chip" data-prompt="Compara las incidencias de hoy con los últimos días y señala diferencias relevantes.">Comparar días</button>
+                <button class="mini-chip" data-prompt="Resume los apuntes de hoy en causas, comprobaciones y acciones pendientes.">Generar resumen</button>
+              </div>
+            </section>
+
+            <section class="editor-section">
+              <div class="editor-head">
+                <div><span class="doc-icon">▤</span><strong>Apuntes</strong></div>
+                <span id="saveStatus">Guardado</span>
+              </div>
+              <div class="editor-toolbar">
+                <button data-command="bold"><b>B</b></button>
+                <button data-command="italic"><i>I</i></button>
+                <button data-command="underline"><u>U</u></button>
+                <button data-command="insertUnorderedList">• Lista</button>
+                <button id="clearEditorBtn">Limpiar</button>
+              </div>
+              <div id="notesEditor" class="notes-editor" contenteditable="true" data-placeholder="Escribe tus apuntes del día..."></div>
+            </section>
+
+            <section class="quick-sections">
+              <div class="quick-box">
+                <div class="quick-title">Conclusiones</div>
+                <textarea id="conclusionsInput" placeholder="Conclusiones provisionales..."></textarea>
+              </div>
+              <div class="quick-box">
+                <div class="quick-title">Pendientes</div>
+                <div id="tasksList" class="tasks-list"></div>
+                <div class="task-add">
+                  <input id="taskInput" placeholder="Añadir pendiente..." />
+                  <button id="addTaskBtn">+</button>
+                </div>
+              </div>
+            </section>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="noteDialog">
+    <form method="dialog" id="noteForm" class="note-form">
+      <div class="dialog-head">
+        <div>
+          <span class="eyebrow">Nuevo registro</span>
+          <h3>Añadir nota</h3>
+        </div>
+        <button class="circle-btn" value="cancel">×</button>
+      </div>
+
+      <label>Título<input id="noteTitle" required placeholder="Ej. Diferencia de carga GOB" /></label>
+      <label>Tipo
+        <select id="noteType">
+          <option value="incident">Incidencia</option>
+          <option value="error">Error</option>
+          <option value="note">Apunte</option>
+          <option value="prompt">Prompt</option>
+        </select>
+      </label>
+      <label>Depósito / etiqueta<input id="noteTag" placeholder="Ej. GOB · principal-b" /></label>
+      <label>Detalle<textarea id="noteBody" rows="5" placeholder="Qué has observado, qué quieres revisar..."></textarea></label>
+      <div class="dialog-actions">
+        <button value="cancel" class="ghost-btn">Cancelar</button>
+        <button id="saveNoteBtn" value="default" class="primary-btn">Guardar nota</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
