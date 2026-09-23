@@ -97,6 +97,18 @@ function escapeHtml(value = "") {
   })[char]);
 }
 
+function normalizeLink(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const url = new URL(candidate);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
 function timeLabel(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -433,6 +445,7 @@ function renderVisualNotes() {
         <div class="visual-note-actions">
           <button class="view-visual" type="button">Ver</button>
           <button class="copy-visual" type="button">Copiar</button>
+          ${note.enlace ? '<button class="open-visual-link" type="button">Enlace ↗</button>' : ""}
           ${note.syncStatus === "error" ? '<button class="retry-visual" type="button">Reintentar</button>' : ""}
           <button class="delete-visual" type="button">Eliminar</button>
         </div>
@@ -485,6 +498,13 @@ function renderVisualNotes() {
       await navigator.clipboard.writeText(note.contenido || "");
       toast("Prompt copiado", "success");
     };
+    const linkButton = card.querySelector(".open-visual-link");
+    if (linkButton) {
+      linkButton.onclick = () => {
+        const href = normalizeLink(note.enlace);
+        if (href) window.open(href, "_blank", "noopener,noreferrer");
+      };
+    }
     const retryButton = card.querySelector(".retry-visual");
     if (retryButton) retryButton.onclick = async () => {
       await putNote({ ...note, syncStatus: "pending", syncError: null });
@@ -511,6 +531,16 @@ function renderVisualNotes() {
 async function openVisualViewer(note) {
   el("visualViewerTitle").textContent = note.titulo || "Apunte visual";
   el("visualViewerPrompt").textContent = note.contenido || "";
+  const viewerLinkWrap = el("visualViewerLinkWrap");
+  const viewerLink = el("visualViewerLink");
+  const href = normalizeLink(note.enlace);
+  viewerLinkWrap.hidden = !href;
+  if (href) {
+    viewerLink.href = href;
+    viewerLink.textContent = href.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+  } else {
+    viewerLink.removeAttribute("href");
+  }
   const image = el("visualViewerImage");
   image.removeAttribute("src");
   image.classList.add("is-loading");
@@ -604,6 +634,7 @@ function clearVisualDraft() {
   el("visualRemoveImageBtn").hidden = true;
   el("visualImageInfo").textContent = "";
   el("visualTitleInput").value = "";
+  el("visualLinkInput").value = "";
   el("visualPromptInput").value = "";
   el("visualPromptCount").textContent = "0/2000";
   el("visualImageInput").value = "";
@@ -685,7 +716,15 @@ async function handleImageSelection(file) {
 async function saveVisualNote() {
   const title = el("visualTitleInput").value.trim() || "Apunte visual";
   const prompt = el("visualPromptInput").value.trim();
+  const rawLink = el("visualLinkInput").value.trim();
+  const enlace = normalizeLink(rawLink);
   const button = el("visualSaveBtn");
+
+  if (rawLink && !enlace) {
+    el("visualLinkInput").focus();
+    toast("El enlace no es válido", "error");
+    return;
+  }
 
   if (!visualDraft.previewUrl) {
     toast("Añade una imagen", "error");
@@ -715,6 +754,7 @@ async function saveVisualNote() {
         titulo: title,
         etiqueta: `Imagen + prompt · ${qualityPreset().label}`,
         contenido: prompt,
+        enlace,
         imagenPath: null,
         imagenNombre: visualDraft.fileName,
         pendingBlob: visualDraft.blob,
