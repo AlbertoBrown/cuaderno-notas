@@ -38,6 +38,7 @@ function parseRemoteVisualContent(row) {
   let prompt = row.contenido || "";
   let imagePath = row.imagen_path || null;
   let legacyImageData = null;
+  let enlace = "";
 
   if (row.tipo === "visual") {
     try {
@@ -46,11 +47,12 @@ function parseRemoteVisualContent(row) {
         prompt = parsed.prompt || "";
         imagePath = imagePath || parsed.imagePath || null;
         legacyImageData = parsed.imageData || null;
+        enlace = parsed.link || parsed.enlace || "";
       }
     } catch {}
   }
 
-  return { prompt, imagePath, legacyImageData };
+  return { prompt, imagePath, legacyImageData, enlace };
 }
 
 function remoteNoteToLocal(row) {
@@ -62,6 +64,7 @@ function remoteNoteToLocal(row) {
     titulo: row.titulo || "",
     etiqueta: row.etiqueta || "",
     contenido: row.tipo === "visual" ? visual.prompt : row.contenido || "",
+    enlace: row.tipo === "visual" ? visual.enlace : "",
     imagenPath: visual.imagePath,
     imagenNombre: row.imagen_nombre || null,
     legacyImageData: visual.legacyImageData,
@@ -76,15 +79,17 @@ function localNoteForRemote(note, hasVisualColumns) {
   let safe = { ...note };
 
   if (note.tipo === "visual") {
-    if (hasVisualColumns) {
-      safe.contenido = note.contenido || "";
-    } else {
-      safe.contenido = JSON.stringify({
-        prompt: note.contenido || "",
-        imagePath: note.imagenPath || null,
-        imageData: note.legacyImageData || null,
-      });
+    const visualPayload = {
+      prompt: note.contenido || "",
+      link: note.enlace || "",
+    };
+
+    if (!hasVisualColumns) {
+      visualPayload.imagePath = note.imagenPath || null;
+      visualPayload.imageData = note.legacyImageData || null;
     }
+
+    safe.contenido = JSON.stringify(visualPayload);
   }
 
   return buildNoteRow(safe, state.user.id, hasVisualColumns);
