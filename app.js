@@ -3,7 +3,16 @@ const SUPABASE_KEY = "sb_publishable_2yVzzQ5Jwpqjl1MnAYzqRg_evnyGVyw";
 
 const supabaseClient = supabase.createClient(
   SUPABASE_URL,
-  SUPABASE_KEY
+  SUPABASE_KEY,
+  {
+    auth: {
+      storage: window.localStorage,
+      storageKey: "cuaderno-notas:auth",
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  }
 );
 const STORAGE_KEY = "cuaderno-notas:v1";
 
@@ -230,17 +239,20 @@ function openAuth(message=""){
 }
 async function initAuth(){
   try{
+    setCloudState("sync","Comprobando sesión","Recuperando tu cuenta");
     const {data:sessionData,error}=await supabaseClient.auth.getSession();
     if(error) throw error;
+
     if(sessionData.session?.user){
       await activateUser(sessionData.session.user);
-    }else{
-      currentUser=null;
-      cloudReady=false;
-      updateAccountUI();
-      setCloudState("local","Inicia sesión","Sincroniza PC ↔ móvil");
-      setTimeout(()=>openAuth(),250);
+      return;
     }
+
+    currentUser=null;
+    cloudReady=false;
+    updateAccountUI();
+    setCloudState("local","Inicia sesión","Sincroniza PC ↔ móvil");
+    setTimeout(()=>openAuth(),250);
   }catch(error){
     console.error("Error iniciando autenticación",error);
     setCloudState("error","Solo local","No se pudo iniciar Supabase");
@@ -577,6 +589,37 @@ el("authSignupBtn").onclick=async()=>{
     msg.className="auth-message ok";msg.textContent="Cuenta creada. Revisa tu correo para confirmar el acceso y después pulsa Entrar.";
   }
 };
+supabaseClient.auth.onAuthStateChange(async (event, session)=>{
+  if(session?.user){
+    if(!currentUser || currentUser.id!==session.user.id){
+      await activateUser(session.user);
+    }else{
+      currentUser=session.user;
+      updateAccountUI();
+      if(cloudReady) setCloudState("ok","En la nube",currentUser.email||"Sincronizado");
+    }
+  }else if(event==="SIGNED_OUT"){
+    currentUser=null;
+    cloudReady=false;
+    updateAccountUI();
+    setCloudState("local","Inicia sesión","Sincroniza PC ↔ móvil");
+  }
+});
+
+document.addEventListener("visibilitychange",async()=>{
+  if(document.visibilityState!=="visible") return;
+  try{
+    const {data}=await supabaseClient.auth.getSession();
+    if(data.session?.user){
+      currentUser=data.session.user;
+      updateAccountUI();
+      if(!cloudReady) await pullCloudData();
+    }
+  }catch(error){
+    console.error("No se pudo recuperar la sesión",error);
+  }
+});
+
 window.addEventListener("online",()=>{if(currentUser&&cloudReady) syncAllLocalToCloud();});
 window.addEventListener("offline",()=>setCloudState("error","Guardado local","Sin conexión"));
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
