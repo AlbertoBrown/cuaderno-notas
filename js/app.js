@@ -130,7 +130,8 @@ function setCloudUI() {
   } else if (state.syncStatus === "error") {
     box.dataset.state = "error";
     box.querySelector("strong").textContent = "Error de sincronización";
-    box.querySelector("small").textContent = "Pulsa actualizar para reintentar";
+    box.querySelector("small").textContent = state.lastSyncError || "Pulsa actualizar para reintentar";
+    box.title = state.lastSyncError || "";
   } else {
     box.dataset.state = "ok";
     box.querySelector("strong").textContent = "En la nube";
@@ -348,9 +349,13 @@ function renderVisualNotes() {
         </div>
         <h3>${escapeHtml(note.titulo || "Apunte visual")}</h3>
         <div class="visual-note-prompt">${escapeHtml(note.contenido || "")}</div>
+        ${note.syncStatus === "error" && note.syncError
+          ? `<div class="visual-sync-error" title="${escapeHtml(note.syncError)}">⚠ ${escapeHtml(note.syncError)}</div>`
+          : ""}
         <div class="visual-note-actions">
           <button class="view-visual" type="button">Ver</button>
           <button class="copy-visual" type="button">Copiar</button>
+          ${note.syncStatus === "error" ? '<button class="retry-visual" type="button">Reintentar</button>' : ""}
           <button class="delete-visual" type="button">Eliminar</button>
         </div>
       </div>
@@ -382,6 +387,12 @@ function renderVisualNotes() {
     card.querySelector(".copy-visual").onclick = async () => {
       await navigator.clipboard.writeText(note.contenido || "");
       toast("Prompt copiado", "success");
+    };
+    const retryButton = card.querySelector(".retry-visual");
+    if (retryButton) retryButton.onclick = async () => {
+      await putNote({ ...note, syncStatus: "pending", syncError: null });
+      renderVisualNotes();
+      syncSoon();
     };
     card.querySelector(".delete-visual").onclick = async () => {
       if (!confirm("¿Eliminar este apunte visual?")) return;
@@ -464,6 +475,11 @@ function syncSoon() {
     } catch (error) {
       console.error(error);
       state.syncStatus = "error";
+      state.lastSyncError = String(error?.message || error || "Error desconocido");
+      toast(state.lastSyncError, "error", {
+        label: "Reintentar",
+        onClick: () => el("refreshBtn").click(),
+      });
     }
     setCloudUI();
     if (state.currentView === "visual") renderVisualNotes();
@@ -651,8 +667,9 @@ function bindEvents() {
     } catch (error) {
       console.error(error);
       state.syncStatus = "error";
+      state.lastSyncError = String(error?.message || error || "Error desconocido");
       setCloudUI();
-      toast("No se pudo sincronizar", "error", {
+      toast(state.lastSyncError, "error", {
         label: "Reintentar",
         onClick: () => el("refreshBtn").click(),
       });
