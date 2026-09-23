@@ -128,3 +128,27 @@ dialog{border:0;border-radius:28px;padding:0;background:#f4f1e8;box-shadow:0 40p
 @media(min-width:721px) and (max-width:1050px){
   .refresh-btn span{display:none}
 }
+
+/* --- iPhone keyboard / bottom-nav UX --- */
+@media(max-width:720px){
+  body.keyboard-open .sidebar{
+    transform:translateY(120%);
+    pointer-events:none;
+    opacity:0;
+  }
+  body.keyboard-open .workspace{
+    padding-bottom:calc(18px + env(safe-area-inset-bottom));
+  }
+  body.keyboard-open .topbar{
+    position:static;
+  }
+  body.keyboard-open .notes-editor,
+  body.keyboard-open textarea,
+  body.keyboard-open input{
+    scroll-margin-bottom:180px;
+  }
+  .sidebar{
+    transition:transform .22s ease,opacity .18s ease;
+    will-change:transform;
+  }
+}
