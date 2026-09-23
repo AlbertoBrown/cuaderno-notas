@@ -113,7 +113,7 @@ export async function uploadImage({ userId, fecha, noteId, blob }) {
     .from(VISUAL_BUCKET)
     .upload(path, blob, {
       contentType: "image/jpeg",
-      cacheControl: "3600",
+      cacheControl: "31536000",
       upsert: true,
     });
 
@@ -126,7 +126,7 @@ export async function uploadImage({ userId, fecha, noteId, blob }) {
       .from(VISUAL_BUCKET)
       .upload(thumbPath, thumbBlob, {
         contentType: "image/jpeg",
-        cacheControl: "86400",
+        cacheControl: "31536000",
         upsert: true,
       });
     if (thumbError) console.warn("No se pudo subir la miniatura", thumbError);
@@ -148,38 +148,135 @@ export async function removeImage(path) {
   if (error) throw error;
   signedUrlCache.delete(path);
   signedUrlCache.delete(thumbPath);
+  await clearCachedStoragePath(path);
 }
 
-export async function getSignedImageUrl(path) {
-  if (!path) return "";
-  const cached = signedUrlCache.get(path);
-  if (cached && cached.expiresAt > Date.now()) return cached.url;
+
+const objectUrlCache = new Map();
+const STORAGE_CACHE = "cuaderno-visual-cache-v1";
+
+function cacheRequestFor(path) {
+  return new Request(`https://cuaderno.local/storage/${encodeURIComponent(path)}`);
+}
+
+async function readBlobFromLocalCache(path) {
+  if (!("caches" in window)) return null;
+  try {
+    const cache = await caches.open(STORAGE_CACHE);
+    const hit = await cache.match(cacheRequestFor(path));
+    return hit ? await hit.blob() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeBlobToLocalCache(path, blob) {
+  if (!("caches" in window)) return;
+  try {
+    const cache = await caches.open(STORAGE_CACHE);
+    await cache.put(
+      cacheRequestFor(path),
+      new Response(blob, {
+        headers: {
+          "Content-Type": blob.type || "image/jpeg",
+          "Cache-Control": "max-age=31536000",
+        },
+      }),
+    );
+  } catch {}
+}
+
+export async function clearCachedStoragePath(path) {
+  if (!path) return;
+  const keys = [path, thumbnailPathFor(path)];
+  for (const key of keys) {
+    const url = objectUrlCache.get(key);
+    if (url) {
+      URL.revokeObjectURL(url);
+      objectUrlCache.delete(key);
+    }
+    if ("caches" in window) {
+      try {
+        const cache = await caches.open(STORAGE_CACHE);
+        await cache.delete(cacheRequestFor(key));
+      } catch {}
+    }
+  }
+}
+
+async function downloadStorageBlob(path) {
+  const cachedBlob = await readBlobFromLocalCache(path);
+  if (cachedBlob) return cachedBlob;
 
   const { data, error } = await supabaseClient.storage
     .from(VISUAL_BUCKET)
-    .createSignedUrl(path, 3600);
+    .download(path);
 
   if (error) throw error;
-  const url = data?.signedUrl || "";
-  if (url) signedUrlCache.set(path, { url, expiresAt: Date.now() + 55 * 60 * 1000 });
+  if (!data) throw new Error("No se pudo descargar la imagen.");
+
+  await writeBlobToLocalCache(path, data);
+  return data;
+}
+
+async function objectUrlForPath(path) {
+  if (!path) return "";
+  const existing = objectUrlCache.get(path);
+  if (existing) return existing;
+
+  const blob = await downloadStorageBlob(path);
+  const url = URL.createObjectURL(blob);
+  objectUrlCache.set(path, url);
   return url;
+}
+
+async function createAndUploadMissingThumbnail(path) {
+  const original = await downloadStorageBlob(path);
+  const thumbBlob = await createThumbnailBlob(original);
+  const thumbPath = thumbnailPathFor(path);
+
+  const { error } = await supabaseClient.storage
+    .from(VISUAL_BUCKET)
+    .upload(thumbPath, thumbBlob, {
+      contentType: "image/jpeg",
+      cacheControl: "31536000",
+      upsert: true,
+    });
+
+  if (error) throw error;
+  await writeBlobToLocalCache(thumbPath, thumbBlob);
+  return thumbBlob;
+}
+
+export async function getSignedImageUrl(path) {
+  return objectUrlForPath(path);
 }
 
 export async function getSignedThumbnailUrl(path) {
   const thumbPath = thumbnailPathFor(path);
   if (!thumbPath) return "";
 
-  const cached = signedUrlCache.get(thumbPath);
-  if (cached && cached.expiresAt > Date.now()) return cached.url;
+  const existing = objectUrlCache.get(thumbPath);
+  if (existing) return existing;
 
-  const { data, error } = await supabaseClient.storage
-    .from(VISUAL_BUCKET)
-    .createSignedUrl(thumbPath, 3600);
-
-  if (error) throw error;
-  const url = data?.signedUrl || "";
-  if (url) signedUrlCache.set(thumbPath, { url, expiresAt: Date.now() + 55 * 60 * 1000 });
-  return url;
+  try {
+    const blob = await downloadStorageBlob(thumbPath);
+    const url = URL.createObjectURL(blob);
+    objectUrlCache.set(thumbPath, url);
+    return url;
+  } catch (error) {
+    // Las imágenes antiguas no tenían miniatura. La creamos una sola vez
+    // a partir del original y a partir de entonces cargará desde caché.
+    try {
+      const blob = await createAndUploadMissingThumbnail(path);
+      const url = URL.createObjectURL(blob);
+      objectUrlCache.set(thumbPath, url);
+      return url;
+    } catch (thumbError) {
+      console.warn("No se pudo generar miniatura antigua", thumbError);
+      return "";
+    }
+  }
 }
 
 export function dataUrlToBlob(dataUrl) {
