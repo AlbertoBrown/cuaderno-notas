@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="apple-touch-icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=21" />
+  <link rel="stylesheet" href="styles.css?v=22" />
 </head>
 <body>
   <div class="app-shell">
@@ -216,6 +216,11 @@
               </label>
 
               <label class="visual-field">
+                <span class="visual-label"><span aria-hidden="true">↗</span> Enlace <small class="visual-optional">Opcional</small></span>
+                <input id="visualLinkInput" type="url" inputmode="url" autocapitalize="off" autocomplete="url" placeholder="https://..." />
+              </label>
+
+              <label class="visual-field">
                 <span class="visual-label-row">
                   <span class="visual-label"><span aria-hidden="true">◯</span> Prompt</span>
                   <small id="visualPromptCount">0/2000</small>
@@ -264,6 +269,10 @@
       </div>
       <div class="visual-viewer-media">
         <img id="visualViewerImage" alt="Imagen del apunte visual" />
+      </div>
+      <div id="visualViewerLinkWrap" class="visual-viewer-link" hidden>
+        <span>Enlace</span>
+        <a id="visualViewerLink" href="#" target="_blank" rel="noopener noreferrer">Abrir enlace ↗</a>
       </div>
       <div class="visual-viewer-prompt">
         <strong>Prompt</strong>
@@ -322,6 +331,6 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="js/app.js?v=21"></script>
+  <script type="module" src="js/app.js?v=22"></script>
 </body>
 </html>
