@@ -79,6 +79,34 @@ export async function optimizeImage(file, { maxSide = 1400, quality = 0.72 } = {
   return { blob, width, height };
 }
 
+async function createThumbnailBlob(blob, { maxSide = 360, quality = 0.58 } = {}) {
+  const bitmap = await loadBitmap(blob);
+  const width0 = bitmap.width || bitmap.naturalWidth;
+  const height0 = bitmap.height || bitmap.naturalHeight;
+  const ratio = Math.min(1, maxSide / Math.max(width0, height0));
+  const width = Math.max(1, Math.round(width0 * ratio));
+  const height = Math.max(1, Math.round(height0 * ratio));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  if (bitmap.close) bitmap.close();
+
+  const thumb = await new Promise(resolve => {
+    canvas.toBlob(resolve, "image/jpeg", quality);
+  });
+
+  if (!thumb) throw new Error("No se pudo crear la miniatura.");
+  return thumb;
+}
+
+export function thumbnailPathFor(path) {
+  if (!path) return "";
+  return path.endsWith(".jpg") ? path.slice(0, -4) + "-thumb.jpg" : path + "-thumb.jpg";
+}
+
 export async function uploadImage({ userId, fecha, noteId, blob }) {
   const path = `${userId}/${fecha}/${noteId}.jpg`;
   const { error } = await supabaseClient.storage
@@ -90,15 +118,36 @@ export async function uploadImage({ userId, fecha, noteId, blob }) {
     });
 
   if (error) throw error;
+
+  try {
+    const thumbBlob = await createThumbnailBlob(blob);
+    const thumbPath = thumbnailPathFor(path);
+    const { error: thumbError } = await supabaseClient.storage
+      .from(VISUAL_BUCKET)
+      .upload(thumbPath, thumbBlob, {
+        contentType: "image/jpeg",
+        cacheControl: "86400",
+        upsert: true,
+      });
+    if (thumbError) console.warn("No se pudo subir la miniatura", thumbError);
+    signedUrlCache.delete(thumbPath);
+  } catch (thumbError) {
+    console.warn("No se pudo crear la miniatura", thumbError);
+  }
+
   signedUrlCache.delete(path);
   return path;
 }
 
 export async function removeImage(path) {
   if (!path) return;
-  const { error } = await supabaseClient.storage.from(VISUAL_BUCKET).remove([path]);
+  const thumbPath = thumbnailPathFor(path);
+  const { error } = await supabaseClient.storage
+    .from(VISUAL_BUCKET)
+    .remove([path, thumbPath]);
   if (error) throw error;
   signedUrlCache.delete(path);
+  signedUrlCache.delete(thumbPath);
 }
 
 export async function getSignedImageUrl(path) {
@@ -113,6 +162,23 @@ export async function getSignedImageUrl(path) {
   if (error) throw error;
   const url = data?.signedUrl || "";
   if (url) signedUrlCache.set(path, { url, expiresAt: Date.now() + 55 * 60 * 1000 });
+  return url;
+}
+
+export async function getSignedThumbnailUrl(path) {
+  const thumbPath = thumbnailPathFor(path);
+  if (!thumbPath) return "";
+
+  const cached = signedUrlCache.get(thumbPath);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+
+  const { data, error } = await supabaseClient.storage
+    .from(VISUAL_BUCKET)
+    .createSignedUrl(thumbPath, 3600);
+
+  if (error) throw error;
+  const url = data?.signedUrl || "";
+  if (url) signedUrlCache.set(thumbPath, { url, expiresAt: Date.now() + 55 * 60 * 1000 });
   return url;
 }
 
