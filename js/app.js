@@ -24,6 +24,7 @@ import {
   optimizeImage,
   IMAGE_QUALITY_PRESETS,
   getSignedImageUrl,
+  getSignedThumbnailUrl,
   filePreviewUrl,
   revokePreviewUrl,
 } from "./visual-notes.js";
@@ -326,6 +327,19 @@ async function imageUrlForNote(note) {
   return "";
 }
 
+async function thumbnailUrlForNote(note) {
+  if (note.pendingBlob) return imageUrlForNote(note);
+  if (note.legacyImageData) return note.legacyImageData;
+  if (!note.imagenPath) return "";
+
+  try {
+    return await getSignedThumbnailUrl(note.imagenPath);
+  } catch (error) {
+    console.warn("No se pudo firmar la miniatura; usando original", error);
+    return "";
+  }
+}
+
 function renderVisualNotes() {
   const list = el("visualNotesList");
   const notes = allVisualNotes();
@@ -345,7 +359,7 @@ function renderVisualNotes() {
     card.innerHTML = `
       <button class="visual-thumb-button" type="button" aria-label="Ver imagen">
         <span class="visual-thumb-skeleton"></span>
-        <img class="visual-note-thumb" loading="lazy" decoding="async" alt="" hidden>
+        <img class="visual-note-thumb" loading="lazy" decoding="async" fetchpriority="low" alt="" hidden>
       </button>
       <div class="visual-note-body">
         <div class="visual-note-meta">
@@ -369,21 +383,37 @@ function renderVisualNotes() {
     const img = card.querySelector(".visual-note-thumb");
     const skeleton = card.querySelector(".visual-thumb-skeleton");
 
-    imageUrlForNote(note).then(url => {
-      if (!url) {
-        skeleton.textContent = "Sin vista previa";
-        skeleton.classList.add("visual-thumb-empty");
-        return;
-      }
+    thumbnailUrlForNote(note).then(async url => {
+      let fallbackTried = false;
+
       img.onload = () => {
         img.hidden = false;
         skeleton.hidden = true;
       };
-      img.onerror = () => {
+
+      img.onerror = async () => {
+        if (!fallbackTried) {
+          fallbackTried = true;
+          const fullUrl = await imageUrlForNote(note);
+          if (fullUrl && fullUrl !== img.src) {
+            img.src = fullUrl;
+            return;
+          }
+        }
         skeleton.textContent = "No se pudo cargar";
         skeleton.classList.add("visual-thumb-empty");
       };
-      img.src = url;
+
+      if (url) {
+        img.src = url;
+      } else {
+        const fullUrl = await imageUrlForNote(note);
+        if (fullUrl) img.src = fullUrl;
+        else {
+          skeleton.textContent = "Sin vista previa";
+          skeleton.classList.add("visual-thumb-empty");
+        }
+      }
     });
 
     const open = () => openVisualViewer(note);
