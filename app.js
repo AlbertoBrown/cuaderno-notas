@@ -324,6 +324,38 @@ let searchTerm = "";
 
 const el = id => document.getElementById(id);
 
+function setupMobileKeyboardUX(){
+  const vv=window.visualViewport;
+  const setKeyboardState=()=>{
+    const viewportHeight=vv ? vv.height : window.innerHeight;
+    const layoutHeight=window.innerHeight;
+    const keyboardLikelyOpen=(layoutHeight-viewportHeight)>140 || document.activeElement?.matches?.("input, textarea, select, [contenteditable='true']");
+    document.body.classList.toggle("keyboard-open",!!keyboardLikelyOpen);
+  };
+
+  document.addEventListener("focusin",e=>{
+    if(e.target.matches?.("input, textarea, select, [contenteditable='true']")){
+      document.body.classList.add("keyboard-open");
+      setTimeout(()=>{
+        try{ e.target.scrollIntoView({block:"center",behavior:"smooth"}); }catch{}
+      },180);
+    }
+  });
+
+  document.addEventListener("focusout",()=>{
+    setTimeout(setKeyboardState,180);
+  });
+
+  if(vv){
+    vv.addEventListener("resize",setKeyboardState);
+    vv.addEventListener("scroll",setKeyboardState);
+  }else{
+    window.addEventListener("resize",setKeyboardState);
+  }
+  setKeyboardState();
+}
+
+
 function loadData(){
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -672,4 +704,5 @@ window.addEventListener("offline",()=>setCloudState("error","Guardado local","Si
 setInterval(()=>{refreshFromCloudIfSafe().catch(()=>{});},10000);
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
 renderAll();
+setupMobileKeyboardUX();
 initAuth();
