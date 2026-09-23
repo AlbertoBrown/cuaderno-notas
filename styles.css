@@ -45,3 +45,86 @@ dialog{border:0;border-radius:28px;padding:0;background:#f4f1e8;box-shadow:0 40p
 
 .cloud-status:hover{background:#1d1d1d;border-color:#505050}
 .cloud-status[data-state="local"]{border-color:#6d5a2c}
+
+/* --- Mobile UX refresh --- */
+.refresh-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:44px}
+.refresh-btn.is-refreshing{pointer-events:none;opacity:.65}
+.refresh-btn.is-refreshing{animation:refreshPulse .85s ease-in-out infinite alternate}
+@keyframes refreshPulse{from{transform:scale(.98)}to{transform:scale(1.02)}}
+
+.notes-editor table{width:100%;max-width:100%;border-collapse:collapse;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.35}
+.notes-editor th,.notes-editor td{padding:8px 6px;border-bottom:1px solid rgba(17,17,17,.09);vertical-align:top;overflow-wrap:anywhere}
+.notes-editor img{max-width:100%;height:auto}
+
+@media(max-width:720px){
+  html,body{background:#f3f1eb}
+  body{-webkit-text-size-adjust:100%}
+  .workspace{padding:14px 10px calc(92px + env(safe-area-inset-bottom))}
+  .topbar{position:sticky;top:0;z-index:14;align-items:center;margin:-14px -10px 10px;padding:10px 12px;background:rgba(244,241,232,.92);backdrop-filter:blur(18px);border-bottom:1px solid rgba(17,17,17,.07)}
+  .topbar .eyebrow{display:none}
+  .topbar h1{font-size:27px;line-height:1;margin:0;letter-spacing:-.04em}
+  .top-actions{gap:7px;margin-left:auto}
+  .top-actions .account-btn{width:42px;height:42px;padding:0;border-radius:50%;font-size:0}
+  .top-actions .account-btn::before{content:"◉";font-size:17px}
+  .top-actions .refresh-btn{width:42px;height:42px;padding:0;border-radius:50%;font-size:22px;background:#111;color:#fff;border-color:#111}
+  .top-actions .refresh-btn span{display:none}
+
+  .date-strip{margin-top:10px;gap:10px}
+  .date-nav{width:100%;justify-content:space-between;background:#fff;border:1px solid #e1ddd3;border-radius:18px;padding:8px 10px}
+  .selected-date{font-size:18px}
+  .selected-date-sub{font-size:11px}
+  .circle-btn{width:36px;height:36px}
+  .week-row{gap:6px;padding-bottom:2px;scrollbar-width:none}
+  .week-row::-webkit-scrollbar{display:none}
+  .week-day{min-width:58px;padding:8px 9px;border-radius:15px}
+
+  .content-grid{display:flex;flex-direction:column;margin-top:12px;gap:14px}
+  .detail-column{order:1}
+  .feed-column{order:2}
+  .daily-card{padding:14px;border-radius:22px;box-shadow:none}
+  .daily-card-top{align-items:center}
+  .daily-card-top h2{font-size:34px;line-height:.94}
+  .mood-art{width:72px;height:66px;border-radius:24px}
+  .sun{width:20px;height:20px;top:10px;right:13px}
+  .mountain{width:70px;height:50px}
+
+  .prompt-panel{margin-top:16px;padding:15px;border-radius:22px}
+  .panel-title{gap:10px}
+  .panel-title strong{font-size:17px}
+  .prompt-panel textarea{min-height:132px;max-height:220px;font-size:16px;line-height:1.42;margin-top:10px}
+  .prompt-actions{gap:6px;margin-top:8px}
+  .mini-chip{font-size:13px;padding:8px 10px}
+
+  .editor-section{margin-top:18px}
+  .editor-head{align-items:flex-start;gap:8px}
+  .editor-head #saveStatus{font-size:11px;line-height:1.25;text-align:right;max-width:145px}
+  .editor-toolbar{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;padding-bottom:4px;scrollbar-width:none}
+  .editor-toolbar::-webkit-scrollbar{display:none}
+  .editor-toolbar button{flex:0 0 auto;min-height:42px;padding:8px 12px}
+  .notes-editor{min-height:210px;max-height:none;padding:14px;border-radius:18px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:16px;line-height:1.5;background-size:100% 29px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .notes-editor table{font-size:12px;min-width:100%;table-layout:fixed}
+  .notes-editor th,.notes-editor td{padding:7px 4px;word-break:break-word}
+
+  .quick-sections{gap:10px;margin-top:14px}
+  .quick-box{padding:14px;border-radius:18px}
+  .quick-box textarea{min-height:96px;font-size:16px}
+  .task{font-size:13px;align-items:flex-start}
+  .task-add input{font-size:16px;min-width:0}
+
+  .section-head{margin-top:4px}
+  .section-head h2{font-size:22px}
+  .primary-btn{padding:10px 14px}
+  .filter-row{margin:12px 0;gap:6px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+  .filter-row::-webkit-scrollbar{display:none}
+  .filter-chip{flex:0 0 auto}
+  .note-card{border-radius:19px;padding:15px}
+
+  .sidebar{padding:8px 10px calc(8px + env(safe-area-inset-bottom));border-radius:24px 24px 0 0}
+  .side-nav{gap:4px}
+  .nav-item{width:52px;height:48px;padding:0;border-radius:16px}
+  .nav-item span{width:28px;height:28px}
+}
+
+@media(min-width:721px) and (max-width:1050px){
+  .refresh-btn span{display:none}
+}
