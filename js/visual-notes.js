@@ -264,19 +264,34 @@ export async function getSignedThumbnailUrl(path) {
     const url = URL.createObjectURL(blob);
     objectUrlCache.set(thumbPath, url);
     return url;
-  } catch (error) {
-    // Las imágenes antiguas no tenían miniatura. La creamos una sola vez
-    // a partir del original y a partir de entonces cargará desde caché.
-    try {
-      const blob = await createAndUploadMissingThumbnail(path);
-      const url = URL.createObjectURL(blob);
-      objectUrlCache.set(thumbPath, url);
-      return url;
-    } catch (thumbError) {
-      console.warn("No se pudo generar miniatura antigua", thumbError);
-      return "";
-    }
+  } catch {
+    // No bloqueamos la tarjeta descargando el original para fabricar la miniatura.
+    return "";
   }
+}
+
+const thumbnailRepairJobs = new Map();
+
+export function ensureThumbnailForPath(path) {
+  if (!path) return Promise.resolve(false);
+  if (thumbnailRepairJobs.has(path)) return thumbnailRepairJobs.get(path);
+
+  const job = createAndUploadMissingThumbnail(path)
+    .then(blob => {
+      const thumbPath = thumbnailPathFor(path);
+      if (blob && !objectUrlCache.has(thumbPath)) {
+        objectUrlCache.set(thumbPath, URL.createObjectURL(blob));
+      }
+      return true;
+    })
+    .catch(error => {
+      console.warn("No se pudo reparar la miniatura", path, error);
+      return false;
+    })
+    .finally(() => thumbnailRepairJobs.delete(path));
+
+  thumbnailRepairJobs.set(path, job);
+  return job;
 }
 
 export function dataUrlToBlob(dataUrl) {
