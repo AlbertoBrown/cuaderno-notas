@@ -22,6 +22,7 @@ import {
 } from "./sync.js";
 import {
   optimizeImage,
+  IMAGE_QUALITY_PRESETS,
   getSignedImageUrl,
   filePreviewUrl,
   revokePreviewUrl,
@@ -34,6 +35,10 @@ let visualDraft = {
   previewUrl: "",
   blob: null,
   fileName: "",
+  originalFile: null,
+  originalSize: 0,
+  optimizedSize: 0,
+  qualityPreset: "balanced",
   width: 0,
   height: 0,
   busy: false,
@@ -493,6 +498,10 @@ function clearVisualDraft() {
     previewUrl: "",
     blob: null,
     fileName: "",
+    originalFile: null,
+    originalSize: 0,
+    optimizedSize: 0,
+    qualityPreset: el("visualQualitySelect")?.value || "balanced",
     width: 0,
     height: 0,
     busy: false,
@@ -509,6 +518,52 @@ function clearVisualDraft() {
   el("visualCameraInput").value = "";
 }
 
+function formatBytes(bytes = 0) {
+  if (!bytes) return "0 KB";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function qualityPreset() {
+  const key = el("visualQualitySelect")?.value || "balanced";
+  return { key, ...(IMAGE_QUALITY_PRESETS[key] || IMAGE_QUALITY_PRESETS.balanced) };
+}
+
+async function recompressVisualDraft() {
+  const file = visualDraft.originalFile;
+  if (!file) return;
+
+  const preset = qualityPreset();
+  visualDraft.busy = true;
+  visualDraft.qualityPreset = preset.key;
+  el("visualImageInfo").textContent = `Comprimiendo · ${preset.label}…`;
+
+  try {
+    const optimized = await optimizeImage(file, {
+      maxSide: preset.maxSide,
+      quality: preset.quality,
+    });
+    visualDraft.blob = optimized.blob;
+    visualDraft.width = optimized.width;
+    visualDraft.height = optimized.height;
+    visualDraft.optimizedSize = optimized.blob.size;
+    visualDraft.busy = false;
+
+    const saving = visualDraft.originalSize
+      ? Math.max(0, Math.round((1 - optimized.blob.size / visualDraft.originalSize) * 100))
+      : 0;
+
+    el("visualImageInfo").textContent =
+      `Original ${formatBytes(visualDraft.originalSize)} → ${formatBytes(optimized.blob.size)} · ${optimized.width}×${optimized.height}${saving ? ` · −${saving}%` : ""}`;
+  } catch (error) {
+    visualDraft.busy = false;
+    visualDraft.blob = file;
+    visualDraft.optimizedSize = file.size || 0;
+    el("visualImageInfo").textContent = "No se pudo comprimir; se usará la imagen original.";
+    console.warn(error);
+  }
+}
+
 async function handleImageSelection(file) {
   if (!file) return;
 
@@ -518,6 +573,10 @@ async function handleImageSelection(file) {
     previewUrl,
     blob: null,
     fileName: file.name || "imagen.jpg",
+    originalFile: file,
+    originalSize: file.size || 0,
+    optimizedSize: 0,
+    qualityPreset: qualityPreset().key,
     width: 0,
     height: 0,
     busy: true,
@@ -528,21 +587,7 @@ async function handleImageSelection(file) {
   el("visualImagePlaceholder").hidden = true;
   el("visualRemoveImageBtn").hidden = false;
   el("visualImageInfo").textContent = "Preparando imagen…";
-
-  try {
-    const optimized = await optimizeImage(file);
-    visualDraft.blob = optimized.blob;
-    visualDraft.width = optimized.width;
-    visualDraft.height = optimized.height;
-    visualDraft.busy = false;
-    const kb = Math.round(optimized.blob.size / 1024);
-    el("visualImageInfo").textContent = `Lista · ${optimized.width}×${optimized.height} · ${kb} KB`;
-  } catch (error) {
-    visualDraft.busy = false;
-    visualDraft.blob = file;
-    el("visualImageInfo").textContent = "Usando imagen original";
-    console.warn(error);
-  }
+  await recompressVisualDraft();
 }
 
 async function saveVisualNote() {
@@ -576,7 +621,7 @@ async function saveVisualNote() {
         fecha: state.selectedDate,
         tipo: "visual",
         titulo: title,
-        etiqueta: "Imagen + prompt",
+        etiqueta: `Imagen + prompt · ${qualityPreset().label}`,
         contenido: prompt,
         imagenPath: null,
         imagenNombre: visualDraft.fileName,
@@ -778,6 +823,11 @@ function bindEvents() {
 
   el("visualImageInput").addEventListener("change", event => handleImageSelection(event.target.files?.[0]));
   el("visualCameraInput").addEventListener("change", event => handleImageSelection(event.target.files?.[0]));
+  el("visualQualitySelect").addEventListener("change", async event => {
+    const preset = IMAGE_QUALITY_PRESETS[event.target.value] || IMAGE_QUALITY_PRESETS.balanced;
+    el("visualQualityHint").textContent = preset.description;
+    if (visualDraft.originalFile) await recompressVisualDraft();
+  });
   el("visualRemoveImageBtn").onclick = clearVisualDraft;
   el("visualPromptInput").addEventListener("input", event => {
     el("visualPromptCount").textContent = `${event.target.value.length}/2000`;
