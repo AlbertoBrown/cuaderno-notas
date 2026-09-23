@@ -25,6 +25,7 @@ import {
   IMAGE_QUALITY_PRESETS,
   getSignedImageUrl,
   getSignedThumbnailUrl,
+  ensureThumbnailForPath,
   filePreviewUrl,
   revokePreviewUrl,
 } from "./visual-notes.js";
@@ -333,6 +334,14 @@ function renderTasks() {
   }
 }
 
+function storagePathForNote(note) {
+  if (note.imagenPath) return note.imagenPath;
+  if (!state.user || !note?.id || !note?.fecha) return "";
+  // uploadImage siempre ha usado esta ruta; permite recuperar filas antiguas
+  // que quedaron sincronizadas antes de guardar imagen_path en la tabla.
+  return `${state.user.id}/${note.fecha}/${note.id}.jpg`;
+}
+
 async function imageUrlForNote(note) {
   if (note.pendingBlob) {
     if (!blobUrlCache.has(note.id)) {
@@ -341,26 +350,52 @@ async function imageUrlForNote(note) {
     return blobUrlCache.get(note.id);
   }
   if (note.legacyImageData) return note.legacyImageData;
-  if (note.imagenPath) {
-    try {
-      return await getSignedImageUrl(note.imagenPath);
-    } catch (error) {
-      console.warn("No se pudo cargar la imagen", error);
+
+  const path = storagePathForNote(note);
+  if (!path) return "";
+
+  try {
+    const url = await getSignedImageUrl(path);
+
+    // Autorrepara el campo imagen_path en notas antiguas cuando comprobamos
+    // que el archivo determinista realmente existe en Storage.
+    if (url && !note.imagenPath) {
+      const repaired = {
+        ...note,
+        imagenPath: path,
+        updatedAt: nowIso(),
+        syncStatus: "pending",
+        syncError: null,
+      };
+      await putNote(repaired);
+      Object.assign(note, repaired);
+      queueMicrotask(() => syncSoon());
     }
+
+    return url;
+  } catch (error) {
+    console.warn("No se pudo cargar la imagen", path, error);
+    return "";
   }
-  return "";
 }
 
 async function thumbnailUrlForNote(note) {
   if (note.pendingBlob) return imageUrlForNote(note);
   if (note.legacyImageData) return note.legacyImageData;
-  if (!note.imagenPath) return "";
+
+  const path = storagePathForNote(note);
+  if (!path) return "";
 
   try {
-    return await getSignedThumbnailUrl(note.imagenPath);
+    const thumbUrl = await getSignedThumbnailUrl(path);
+    if (thumbUrl) return thumbUrl;
+
+    // Mostramos el original inmediatamente y reparamos la miniatura en segundo plano.
+    ensureThumbnailForPath(path);
+    return await imageUrlForNote(note);
   } catch (error) {
-    console.warn("No se pudo firmar la miniatura; usando original", error);
-    return "";
+    console.warn("Miniatura no disponible; usando original", path, error);
+    return await imageUrlForNote(note);
   }
 }
 
@@ -434,7 +469,7 @@ function renderVisualNotes() {
         const fullUrl = await imageUrlForNote(note);
         if (fullUrl) img.src = fullUrl;
         else {
-          skeleton.textContent = "Sin vista previa";
+          skeleton.textContent = "Imagen no encontrada";
           skeleton.classList.add("visual-thumb-empty");
         }
       }
