@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="apple-touch-icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=15" />
+  <link rel="stylesheet" href="styles.css?v=16" />
 </head>
 <body>
   <div class="app-shell">
@@ -186,6 +186,18 @@
                 <img id="visualImagePreview" class="visual-image-preview" alt="Vista previa" hidden />
               </div>
 
+              <div class="image-quality-row">
+                <label for="visualQualitySelect">
+                  <span>Calidad de imagen</span>
+                  <select id="visualQualitySelect">
+                    <option value="high">Alta calidad</option>
+                    <option value="balanced" selected>Equilibrado</option>
+                    <option value="small">Máxima compresión</option>
+                  </select>
+                </label>
+                <small id="visualQualityHint">Buena calidad con menor peso.</small>
+              </div>
+
               <div class="image-actions">
                 <label class="upload-btn secondary">Cámara
                   <input id="visualCameraInput" type="file" accept="image/*" capture="environment" hidden />
@@ -310,6 +322,6 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="js/app.js?v=15"></script>
+  <script type="module" src="js/app.js?v=16"></script>
 </body>
 </html>
