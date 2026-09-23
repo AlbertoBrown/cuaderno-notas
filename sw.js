@@ -1,4 +1,4 @@
-const CACHE="cuaderno-notas-v12";
+const CACHE="cuaderno-notas-v13";
 const ASSETS=[
   "./",
   "./index.html",
