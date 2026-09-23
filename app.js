@@ -26,7 +26,13 @@ const dirtyDates = new Set();
 let cloudPullInFlight = false;
 
 function saveLocalOnly(){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    return true;
+  }catch(error){
+    console.warn("No se pudo guardar todo en localStorage",error);
+    return false;
+  }
 }
 function setCloudState(state, title, subtitle=""){
   const box=el("cloudStatus");
@@ -128,15 +134,17 @@ async function syncDayToCloud(dateKey){
   }
 }
 async function upsertNoteToCloud(dateKey,item){
-  if(!currentUser||!cloudReady) return;
+  if(!currentUser||!cloudReady) return false;
   try{
     const {error}=await supabaseClient.from("cuaderno_notas").upsert(noteRow(dateKey,item),{onConflict:"id"});
     if(error) throw error;
     setCloudState("ok","En la nube",currentUser.email||"Sincronizado");
+    return true;
   }catch(error){
     console.error("Error sincronizando nota",error);
     const detail=(error&&error.message)?error.message:"Error al guardar nota";
     setCloudState("error","Error Supabase",detail);
+    return false;
   }
 }
 async function flushDirtyDates(){
@@ -395,11 +403,14 @@ function escapeHtml(str=""){
 
 function renderAll(){
   renderDateHeader();
-  renderDay();
-  renderNotes();
-  renderVisualNotes();
   const badge=el("visualDateBadge");
   if(badge) badge.textContent=formatDate(fromKey(selectedDate),{day:"2-digit",month:"short",year:"numeric"});
+  if(currentView==="visual"){
+    renderVisualNotes();
+  }else{
+    renderDay();
+    renderNotes();
+  }
 }
 
 function renderDateHeader(){
@@ -502,6 +513,75 @@ function parseVisualBody(body=""){
   }
 }
 
+const VISUAL_BUCKET="cuaderno-imagenes";
+const signedImageCache=new Map();
+
+function dataUrlToBlob(dataUrl){
+  const parts=dataUrl.split(",");
+  const mime=(parts[0].match(/data:(.*?);base64/)||[])[1]||"image/jpeg";
+  const binary=atob(parts[1]||"");
+  const bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+  return new Blob([bytes],{type:mime});
+}
+
+async function uploadVisualImageToStorage(noteId,dataUrl,dateKey){
+  if(!currentUser||!cloudReady||!dataUrl) return null;
+  try{
+    const blob=dataUrlToBlob(dataUrl);
+    const path=`${currentUser.id}/${dateKey}/${noteId}.jpg`;
+    const {error}=await supabaseClient.storage
+      .from(VISUAL_BUCKET)
+      .upload(path,blob,{contentType:"image/jpeg",upsert:true,cacheControl:"3600"});
+    if(error) throw error;
+    return path;
+  }catch(error){
+    console.warn("Storage no disponible; se conservará la imagen embebida",error);
+    return null;
+  }
+}
+
+async function getVisualImageUrl(payload){
+  if(payload.imageData) return payload.imageData;
+  if(!payload.imagePath) return "";
+  if(signedImageCache.has(payload.imagePath)) return signedImageCache.get(payload.imagePath);
+  try{
+    const {data,error}=await supabaseClient.storage
+      .from(VISUAL_BUCKET)
+      .createSignedUrl(payload.imagePath,3600);
+    if(error) throw error;
+    const url=data?.signedUrl||"";
+    if(url) signedImageCache.set(payload.imagePath,url);
+    return url;
+  }catch(error){
+    console.warn("No se pudo abrir la imagen de Storage",error);
+    return "";
+  }
+}
+
+async function removeVisualImageFromStorage(payload){
+  if(!payload?.imagePath||!currentUser) return;
+  signedImageCache.delete(payload.imagePath);
+  try{
+    await supabaseClient.storage.from(VISUAL_BUCKET).remove([payload.imagePath]);
+  }catch(error){
+    console.warn("No se pudo borrar la imagen de Storage",error);
+  }
+}
+
+async function openVisualViewer(item,payload){
+  const dialog=el("visualViewerDialog");
+  el("visualViewerTitle").textContent=item.title||"Apunte visual";
+  el("visualViewerPrompt").textContent=payload.prompt||"";
+  const img=el("visualViewerImage");
+  img.removeAttribute("src");
+  img.classList.add("is-loading");
+  const url=await getVisualImageUrl(payload);
+  if(url) img.src=url;
+  img.classList.remove("is-loading");
+  if(!dialog.open) dialog.showModal();
+}
+
 async function compressImageFile(file){
   if(!file) return null;
   if(!file.type.startsWith("image/")) throw new Error("El archivo no es una imagen.");
@@ -576,48 +656,84 @@ async function handleVisualImage(file){
 function renderVisualNotes(){
   const list=el("visualNotesList");
   if(!list) return;
-  const items=(ensureDay(selectedDate).items||[])
-    .filter(x=>x.type==="visual")
-    .sort((a,b)=>(b.createdAt||b.time||"").localeCompare(a.createdAt||a.time||""));
+
+  const items=[];
+  for(const [dateKey,day] of Object.entries(data)){
+    for(const item of day.items||[]){
+      if(item.type==="visual") items.push({...item,dateKey});
+    }
+  }
+  items.sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||""));
 
   const count=el("visualLibraryCount");
   if(count) count.textContent=`${items.length} apunte${items.length===1?"":"s"} guardado${items.length===1?"":"s"}`;
 
   if(!items.length){
-    list.innerHTML=`<div class="empty-state">Todavía no hay apuntes visuales para este día.<br><small>Añade una imagen y su prompt arriba.</small></div>`;
+    list.innerHTML=`<div class="empty-state">Todavía no hay apuntes visuales guardados.<br><small>Añade una imagen y su prompt arriba.</small></div>`;
     return;
   }
 
-  list.innerHTML="";
+  const fragment=document.createDocumentFragment();
+
   for(const item of items){
     const payload=parseVisualBody(item.body);
     const card=document.createElement("article");
     card.className="visual-note-card";
     card.innerHTML=`
-      ${payload.imageData?`<img src="${payload.imageData}" alt="">`:"<div></div>"}
+      <button class="visual-thumb-button" type="button" aria-label="Ver imagen">
+        <span class="visual-thumb-skeleton"></span>
+        <img class="visual-note-thumb" alt="" hidden>
+      </button>
       <div class="visual-note-body">
-        <div class="visual-note-meta"><span>${escapeHtml(item.time||"")}</span><span>Imagen + Prompt</span></div>
+        <div class="visual-note-meta">
+          <span>${formatDate(fromKey(item.dateKey),{day:"2-digit",month:"short"})} · ${escapeHtml(item.time||"")}</span>
+          <span>Imagen + Prompt</span>
+        </div>
         <h3>${escapeHtml(item.title||"Apunte visual")}</h3>
         <div class="visual-note-prompt">${escapeHtml(payload.prompt||"")}</div>
         <div class="visual-note-tags"><span>#imagen</span><span>#prompt</span></div>
         <div class="visual-note-actions">
+          <button class="view-visual" type="button">Ver</button>
           <button class="copy-visual" type="button">Copiar</button>
           <button class="delete-visual" type="button">Eliminar</button>
         </div>
       </div>`;
+
+    const thumb=card.querySelector(".visual-note-thumb");
+    const skeleton=card.querySelector(".visual-thumb-skeleton");
+    getVisualImageUrl(payload).then(url=>{
+      if(!url){
+        skeleton.textContent="Sin vista previa";
+        skeleton.classList.add("visual-thumb-empty");
+        return;
+      }
+      thumb.onload=()=>{
+        thumb.hidden=false;
+        skeleton.hidden=true;
+      };
+      thumb.src=url;
+    });
+
+    card.querySelector(".visual-thumb-button").onclick=()=>openVisualViewer(item,payload);
+    card.querySelector(".view-visual").onclick=()=>openVisualViewer(item,payload);
     card.querySelector(".copy-visual").onclick=async()=>navigator.clipboard.writeText(payload.prompt||"");
-    card.querySelector(".delete-visual").onclick=()=>{
+    card.querySelector(".delete-visual").onclick=async()=>{
       if(!confirm("¿Eliminar este apunte visual?")) return;
-      const day=ensureDay(selectedDate);
+      const day=ensureDay(item.dateKey);
       day.items=day.items.filter(x=>x.id!==item.id);
       queueDelete(item.id);
-      saveData(selectedDate);
-      flushPendingDeletes().catch(()=>{});
+      saveLocalOnly();
+      await Promise.all([
+        flushPendingDeletes().catch(()=>{}),
+        removeVisualImageFromStorage(payload)
+      ]);
       renderVisualNotes();
       renderDateHeader();
     };
-    list.appendChild(card);
+    fragment.appendChild(card);
   }
+
+  list.replaceChildren(fragment);
 }
 
 function showView(view){
@@ -741,9 +857,13 @@ el("visualPromptInput").addEventListener("input",e=>{
   if(counter) counter.textContent=`${e.target.value.length}/2000`;
 });
 el("visualCopyDraftBtn").onclick=async()=>navigator.clipboard.writeText(el("visualPromptInput").value||"");
+el("visualViewerClose").onclick=()=>el("visualViewerDialog").close();
 el("visualSaveBtn").onclick=async()=>{
+  const btn=el("visualSaveBtn");
   const title=el("visualTitleInput").value.trim()||"Apunte visual";
   const prompt=el("visualPromptInput").value.trim();
+  const dateKey=selectedDate;
+
   if(!visualImageData){
     el("visualImageInfo").textContent="Añade una imagen antes de guardar.";
     return;
@@ -753,22 +873,50 @@ el("visualSaveBtn").onclick=async()=>{
     el("visualImageInfo").textContent="Escribe el prompt antes de guardar.";
     return;
   }
-  const now=new Date();
-  const item={
-    id:crypto.randomUUID(),
-    type:"visual",
-    title,
-    tag:"Imagen + prompt",
-    body:JSON.stringify({prompt,imageData:visualImageData}),
-    time:now.toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"}),
-    createdAt:now.toISOString()
-  };
-  ensureDay(selectedDate).items.push(item);
-  saveData(selectedDate);
-  await upsertNoteToCloud(selectedDate,item);
-  resetVisualComposer();
-  renderVisualNotes();
-  renderDateHeader();
+
+  const old=btn.innerHTML;
+  btn.disabled=true;
+  btn.innerHTML="Guardando…";
+
+  try{
+    const now=new Date();
+    const id=crypto.randomUUID();
+    const imagePath=await uploadVisualImageToStorage(id,visualImageData,dateKey);
+    const payload=imagePath
+      ? {prompt,imagePath}
+      : {prompt,imageData:visualImageData};
+
+    const item={
+      id,
+      type:"visual",
+      title,
+      tag:"Imagen + prompt",
+      body:JSON.stringify(payload),
+      time:now.toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"}),
+      createdAt:now.toISOString()
+    };
+
+    ensureDay(dateKey).items.push(item);
+    const localSaved=saveLocalOnly();
+    renderVisualNotes();
+    renderDateHeader();
+
+    const cloudSaved=await upsertNoteToCloud(dateKey,item);
+
+    resetVisualComposer();
+
+    if(currentUser&&cloudReady&&cloudSaved){
+      setCloudState("ok","En la nube",currentUser.email||"Sincronizado");
+    }else if(!localSaved){
+      setCloudState("error","Pendiente","La imagen es demasiado grande para el almacenamiento local");
+    }
+  }catch(error){
+    console.error("No se pudo guardar el apunte visual",error);
+    el("visualImageInfo").textContent=(error&&error.message)||"No se pudo guardar el apunte.";
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML=old;
+  }
 };
 
 document.querySelectorAll(".nav-item").forEach(btn=>btn.onclick=()=>{
@@ -873,6 +1021,7 @@ async function refreshFromCloudIfSafe(){
   if(dirtyDates.size||syncTimers.size) return;
   if(Date.now()-lastLocalEditAt<2500) return;
   if(isEditingNow()) return;
+  if(currentView==="visual" && (visualImageData || el("visualPromptInput")?.value.trim() || el("visualTitleInput")?.value.trim())) return;
   await pullCloudData();
 }
 
@@ -899,7 +1048,7 @@ window.addEventListener("online",async()=>{
   }
 });
 window.addEventListener("offline",()=>setCloudState("error","Guardado local","Sin conexión"));
-setInterval(()=>{refreshFromCloudIfSafe().catch(()=>{});},10000);
+setInterval(()=>{refreshFromCloudIfSafe().catch(()=>{});},30000);
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
 showView("today");
 renderAll();
