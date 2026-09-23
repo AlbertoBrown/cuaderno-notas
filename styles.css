@@ -28,7 +28,7 @@ dialog{border:0;border-radius:28px;padding:0;background:#f4f1e8;box-shadow:0 40p
 @media(max-width:1050px){.app-shell{grid-template-columns:80px 1fr}.brand div:not(.brand-mark),.nav-item{font-size:0}.nav-item{justify-content:center}.nav-item span{font-size:14px}.sidebar-footer{display:none}.content-grid{grid-template-columns:1fr}.feed-column{order:2}.detail-column{order:1}.week-row{max-width:52vw}}
 @media(max-width:720px){.app-shell{display:block}.sidebar{position:fixed;z-index:20;bottom:0;top:auto;left:0;right:0;min-height:0;padding:9px 12px;background:#0d0d0d;flex-direction:row;align-items:center}.brand,.sidebar-footer{display:none}.side-nav{display:flex;width:100%;justify-content:space-around}.nav-item{padding:8px}.nav-item:nth-child(n+5){display:none}.workspace{padding:22px 16px 100px}.topbar{align-items:flex-start}.topbar h1{font-size:44px}.top-actions{display:flex}.top-actions .search-box,.top-actions #todayBtn{display:none}.date-strip{align-items:flex-start;flex-direction:column}.week-row{max-width:100%;width:100%}.content-grid{margin-top:18px;gap:18px}.daily-card{border-radius:28px;padding:20px}.daily-card-top h2{font-size:42px}.mood-art{width:110px;height:95px}.quick-sections{grid-template-columns:1fr}.section-head{align-items:center}.section-head h2{font-size:24px}}
 
-.cloud-status{display:flex;align-items:center;gap:10px;padding:10px 11px;border:1px solid #343434;border-radius:13px;background:#151515;margin-bottom:2px}
+.cloud-status{display:flex;align-items:center;gap:10px;padding:10px 11px;border:1px solid #343434;border-radius:13px;background:#151515;margin-bottom:2px;color:#fff;text-align:left;width:100%;cursor:pointer}
 .cloud-status strong,.cloud-status small{display:block}.cloud-status strong{font-size:12px}.cloud-status small{font-size:10px;color:#999;margin-top:2px}
 .cloud-dot{width:9px;height:9px;border-radius:50%;background:#777;box-shadow:0 0 0 4px rgba(255,255,255,.04)}
 .cloud-status[data-state="ok"] .cloud-dot{background:#9fc77b}.cloud-status[data-state="sync"] .cloud-dot{background:#f4d866}.cloud-status[data-state="error"] .cloud-dot{background:#f38a5a}
@@ -42,3 +42,6 @@ dialog{border:0;border-radius:28px;padding:0;background:#f4f1e8;box-shadow:0 40p
 .auth-actions{display:flex;gap:8px;margin-top:18px}.auth-actions button{flex:1}
 .auth-message{min-height:20px;font-size:13px;color:#6c675e;margin:12px 0 0}.auth-message.error{color:#b33f27}.auth-message.ok{color:#52743b}
 .local-only-btn{display:block;margin:12px auto 0;border:0;background:transparent;color:#777;text-decoration:underline;padding:8px}
+
+.cloud-status:hover{background:#1d1d1d;border-color:#505050}
+.cloud-status[data-state="local"]{border-color:#6d5a2c}
