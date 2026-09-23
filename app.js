@@ -547,6 +547,7 @@ function resetVisualComposer(){
   el("visualImageInfo").textContent="";
   el("visualTitleInput").value="";
   el("visualPromptInput").value="";
+  if(el("visualPromptCount")) el("visualPromptCount").textContent="0/2000";
   el("visualImageInput").value="";
   el("visualCameraInput").value="";
 }
@@ -579,6 +580,9 @@ function renderVisualNotes(){
     .filter(x=>x.type==="visual")
     .sort((a,b)=>(b.createdAt||b.time||"").localeCompare(a.createdAt||a.time||""));
 
+  const count=el("visualLibraryCount");
+  if(count) count.textContent=`${items.length} apunte${items.length===1?"":"s"} guardado${items.length===1?"":"s"}`;
+
   if(!items.length){
     list.innerHTML=`<div class="empty-state">Todavía no hay apuntes visuales para este día.<br><small>Añade una imagen y su prompt arriba.</small></div>`;
     return;
@@ -590,13 +594,14 @@ function renderVisualNotes(){
     const card=document.createElement("article");
     card.className="visual-note-card";
     card.innerHTML=`
-      ${payload.imageData?`<img src="${payload.imageData}" alt="">`:""}
+      ${payload.imageData?`<img src="${payload.imageData}" alt="">`:"<div></div>"}
       <div class="visual-note-body">
         <div class="visual-note-meta"><span>${escapeHtml(item.time||"")}</span><span>Imagen + Prompt</span></div>
         <h3>${escapeHtml(item.title||"Apunte visual")}</h3>
         <div class="visual-note-prompt">${escapeHtml(payload.prompt||"")}</div>
+        <div class="visual-note-tags"><span>#imagen</span><span>#prompt</span></div>
         <div class="visual-note-actions">
-          <button class="copy-visual" type="button">Copiar prompt</button>
+          <button class="copy-visual" type="button">Copiar</button>
           <button class="delete-visual" type="button">Eliminar</button>
         </div>
       </div>`;
@@ -731,6 +736,10 @@ el("visualRemoveImageBtn").onclick=()=>{
   el("visualImageInput").value="";
   el("visualCameraInput").value="";
 };
+el("visualPromptInput").addEventListener("input",e=>{
+  const counter=el("visualPromptCount");
+  if(counter) counter.textContent=`${e.target.value.length}/2000`;
+});
 el("visualCopyDraftBtn").onclick=async()=>navigator.clipboard.writeText(el("visualPromptInput").value||"");
 el("visualSaveBtn").onclick=async()=>{
   const title=el("visualTitleInput").value.trim()||"Apunte visual";
