@@ -423,6 +423,28 @@ function shiftDay(delta){
 el("prevDay").onclick=()=>shiftDay(-1);
 el("nextDay").onclick=()=>shiftDay(1);
 el("todayBtn").onclick=()=>{selectedDate=toKey(new Date());renderAll();};
+
+el("refreshBtn").onclick=async()=>{
+  const btn=el("refreshBtn");
+  btn.classList.add("is-refreshing");
+  const old=btn.innerHTML;
+  btn.innerHTML="↻ <span>Actualizando…</span>";
+  try{
+    if(currentUser){
+      if(cloudReady) await syncAllLocalToCloud();
+      await pullCloudData();
+    }else{
+      location.reload();
+      return;
+    }
+  }catch(error){
+    console.error("Error al actualizar",error);
+    setCloudState("error","Error Supabase",(error&&error.message)||"No se pudo actualizar");
+  }finally{
+    btn.classList.remove("is-refreshing");
+    btn.innerHTML=old;
+  }
+};
 el("newNoteBtn").onclick=()=>{el("noteForm").reset();el("noteDialog").showModal();};
 
 el("saveNoteBtn").addEventListener("click",e=>{
