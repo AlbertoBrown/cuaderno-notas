@@ -7,6 +7,238 @@ const supabaseClient = supabase.createClient(
 );
 const STORAGE_KEY = "cuaderno-notas:v1";
 
+const PENDING_DELETES_KEY = "cuaderno-notas:pending-deletes:v1";
+let currentUser = null;
+let cloudReady = false;
+let syncTimers = new Map();
+let syncingAll = false;
+
+function saveLocalOnly(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+function setCloudState(state, title, subtitle=""){
+  const box=el("cloudStatus");
+  if(box){
+    box.dataset.state=state;
+    const strong=box.querySelector("strong"), small=box.querySelector("small");
+    if(strong) strong.textContent=title;
+    if(small) small.textContent=subtitle;
+  }
+  if(el("saveStatus")){
+    if(state==="sync") el("saveStatus").textContent="Sincronizando…";
+    else if(state==="ok") el("saveStatus").textContent="Sincronizado · "+new Date().toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"});
+    else if(state==="error") el("saveStatus").textContent="Guardado local · pendiente de sincronizar";
+    else el("saveStatus").textContent="Guardado en este dispositivo";
+  }
+}
+function updateAccountUI(){
+  const btn=el("accountBtn");
+  if(!btn) return;
+  if(currentUser){
+    btn.textContent="✓ "+(currentUser.email||"Cuenta");
+    btn.title="Pulsa para cerrar sesión";
+  }else{
+    btn.textContent="Iniciar sesión";
+    btn.title="Sincronizar entre dispositivos";
+  }
+}
+function getPendingDeletes(){
+  try{return JSON.parse(localStorage.getItem(PENDING_DELETES_KEY)||"[]");}catch{return [];}
+}
+function setPendingDeletes(ids){
+  localStorage.setItem(PENDING_DELETES_KEY,JSON.stringify([...new Set(ids)]));
+}
+function queueDelete(id){
+  const ids=getPendingDeletes();
+  if(!ids.includes(id)) ids.push(id);
+  setPendingDeletes(ids);
+}
+async function flushPendingDeletes(){
+  if(!currentUser) return;
+  const ids=getPendingDeletes();
+  if(!ids.length) return;
+  const {error}=await supabaseClient.from("cuaderno_notas").delete().in("id",ids).eq("user_id",currentUser.id);
+  if(error) throw error;
+  setPendingDeletes([]);
+}
+function noteCreatedAt(dateKey,item){
+  if(item.createdAt) return item.createdAt;
+  const time=(item.time&&/^\d{2}:\d{2}$/.test(item.time))?item.time:"12:00";
+  const d=new Date(dateKey+"T"+time+":00");
+  return Number.isNaN(d.getTime())?new Date().toISOString():d.toISOString();
+}
+function dayRow(dateKey){
+  const day=ensureDay(dateKey);
+  return {
+    user_id:currentUser.id,
+    fecha:dateKey,
+    prompt:day.prompt||"",
+    apuntes:day.notesHtml||"",
+    conclusiones:day.conclusions||"",
+    tareas:Array.isArray(day.tasks)?day.tasks:[],
+    updated_at:new Date().toISOString()
+  };
+}
+function noteRow(dateKey,item){
+  return {
+    id:item.id,
+    user_id:currentUser.id,
+    fecha:dateKey,
+    tipo:item.type||"note",
+    titulo:item.title||"",
+    etiqueta:item.tag||"",
+    contenido:item.body||"",
+    created_at:noteCreatedAt(dateKey,item),
+    updated_at:new Date().toISOString()
+  };
+}
+function scheduleDaySync(dateKey){
+  if(!currentUser||!cloudReady) return;
+  if(syncTimers.has(dateKey)) clearTimeout(syncTimers.get(dateKey));
+  setCloudState("sync","Sincronizando","Guardando cambios");
+  syncTimers.set(dateKey,setTimeout(()=>syncDayToCloud(dateKey),650));
+}
+async function syncDayToCloud(dateKey){
+  if(!currentUser||!cloudReady) return;
+  try{
+    const {error}=await supabaseClient.from("cuaderno_dias").upsert(dayRow(dateKey),{onConflict:"user_id,fecha"});
+    if(error) throw error;
+    setCloudState("ok","En la nube",currentUser.email||"Sincronizado");
+  }catch(error){
+    console.error("Error sincronizando día",error);
+    setCloudState("error","Guardado local","Se sincronizará al recuperar conexión");
+  }
+}
+async function upsertNoteToCloud(dateKey,item){
+  if(!currentUser||!cloudReady) return;
+  try{
+    const {error}=await supabaseClient.from("cuaderno_notas").upsert(noteRow(dateKey,item),{onConflict:"id"});
+    if(error) throw error;
+    setCloudState("ok","En la nube",currentUser.email||"Sincronizado");
+  }catch(error){
+    console.error("Error sincronizando nota",error);
+    setCloudState("error","Guardado local","Nota pendiente de sincronizar");
+  }
+}
+async function syncAllLocalToCloud(){
+  if(!currentUser||syncingAll) return;
+  syncingAll=true;
+  setCloudState("sync","Sincronizando","Subiendo datos locales");
+  try{
+    await flushPendingDeletes();
+    const days=Object.entries(data).map(([dateKey])=>dayRow(dateKey));
+    const notes=[];
+    for(const [dateKey,day] of Object.entries(data)){
+      for(const item of day.items||[]) notes.push(noteRow(dateKey,item));
+    }
+    if(days.length){
+      const {error}=await supabaseClient.from("cuaderno_dias").upsert(days,{onConflict:"user_id,fecha"});
+      if(error) throw error;
+    }
+    if(notes.length){
+      const {error}=await supabaseClient.from("cuaderno_notas").upsert(notes,{onConflict:"id"});
+      if(error) throw error;
+    }
+    setCloudState("ok","En la nube",currentUser.email||"Sincronizado");
+  }catch(error){
+    console.error("Error sincronizando todo",error);
+    setCloudState("error","Guardado local","No se pudo completar la sincronización");
+  }finally{
+    syncingAll=false;
+  }
+}
+async function pullCloudData(){
+  if(!currentUser) return;
+  setCloudState("sync","Sincronizando","Descargando tus notas");
+  try{
+    await flushPendingDeletes();
+    const [{data:days,error:daysError},{data:notes,error:notesError}]=await Promise.all([
+      supabaseClient.from("cuaderno_dias").select("*").eq("user_id",currentUser.id),
+      supabaseClient.from("cuaderno_notas").select("*").eq("user_id",currentUser.id).order("created_at",{ascending:true})
+    ]);
+    if(daysError) throw daysError;
+    if(notesError) throw notesError;
+
+    const hasRemote=(days&&days.length)||(notes&&notes.length);
+    const hadSavedLocal=!!localStorage.getItem(STORAGE_KEY);
+
+    if(hasRemote){
+      const cloud={};
+      for(const row of days||[]){
+        cloud[row.fecha]={
+          prompt:row.prompt||"",
+          notesHtml:row.apuntes||"",
+          conclusions:row.conclusiones||"",
+          tasks:Array.isArray(row.tareas)?row.tareas:[],
+          items:[]
+        };
+      }
+      for(const row of notes||[]){
+        if(!cloud[row.fecha]) cloud[row.fecha]={prompt:"",notesHtml:"",conclusions:"",tasks:[],items:[]};
+        const dt=new Date(row.created_at);
+        cloud[row.fecha].items.push({
+          id:row.id,
+          type:row.tipo||"note",
+          title:row.titulo||"",
+          tag:row.etiqueta||"",
+          body:row.contenido||"",
+          time:Number.isNaN(dt.getTime())?"":dt.toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"}),
+          createdAt:row.created_at
+        });
+      }
+      data=cloud;
+      saveLocalOnly();
+    }else if(hadSavedLocal){
+      cloudReady=true;
+      await syncAllLocalToCloud();
+    }else{
+      data={};
+      saveLocalOnly();
+    }
+
+    cloudReady=true;
+    selectedDate=toKey(new Date());
+    ensureDay(selectedDate);
+    saveLocalOnly();
+    renderAll();
+    setCloudState("ok","En la nube",currentUser.email||"Sincronizado");
+  }catch(error){
+    console.error("Error cargando Supabase",error);
+    cloudReady=false;
+    setCloudState("error","Solo local","No se pudo conectar con Supabase");
+  }
+}
+async function activateUser(user){
+  currentUser=user;
+  cloudReady=false;
+  updateAccountUI();
+  await pullCloudData();
+}
+function openAuth(message=""){
+  const dialog=el("authDialog");
+  if(message) el("authMessage").textContent=message;
+  if(dialog&&!dialog.open) dialog.showModal();
+}
+async function initAuth(){
+  try{
+    const {data:sessionData,error}=await supabaseClient.auth.getSession();
+    if(error) throw error;
+    if(sessionData.session?.user){
+      await activateUser(sessionData.session.user);
+    }else{
+      currentUser=null;
+      cloudReady=false;
+      updateAccountUI();
+      setCloudState("local","Solo local","Inicia sesión para sincronizar");
+      setTimeout(()=>openAuth(),250);
+    }
+  }catch(error){
+    console.error("Error iniciando autenticación",error);
+    setCloudState("error","Solo local","No se pudo iniciar Supabase");
+  }
+}
+
+
 const TYPE_META = {
   incident: { label: "Incidencia", tone: "orange" },
   error: { label: "Error", tone: "blue" },
@@ -42,7 +274,6 @@ const seed = {
 
 let data = loadData();
 let selectedDate = toKey(new Date());
-if (!data[selectedDate]) selectedDate = "2026-09-23";
 let currentFilter = "all";
 let searchTerm = "";
 
@@ -56,9 +287,10 @@ function loadData(){
     return structuredClone(seed);
   }
 }
-function saveData(){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  el("saveStatus").textContent = "Guardado · " + new Date().toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"});
+function saveData(syncDate=selectedDate){
+  saveLocalOnly();
+  if(currentUser&&cloudReady) scheduleDaySync(syncDate);
+  else setCloudState("local","Solo local","Guardado en este dispositivo");
 }
 function toKey(date){
   const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,"0"), d=String(date.getDate()).padStart(2,"0");
@@ -152,7 +384,10 @@ function renderNotes(){
       if(!confirm("¿Eliminar esta nota?")) return;
       const day=data[item.date];
       day.items=day.items.filter(n=>n.id!==item.id);
-      saveData(); renderNotes(); renderDateHeader();
+      queueDelete(item.id);
+      saveData(item.date);
+      flushPendingDeletes().catch(()=>{});
+      renderNotes(); renderDateHeader();
     };
     list.appendChild(card);
   });
@@ -186,15 +421,19 @@ el("saveNoteBtn").addEventListener("click",e=>{
   const title=el("noteTitle").value.trim();
   if(!title){el("noteTitle").focus();return;}
   const now=new Date();
-  ensureDay(selectedDate).items.push({
+  const item={
     id:crypto.randomUUID(),
     type:el("noteType").value,
     title,
     tag:el("noteTag").value.trim(),
     body:el("noteBody").value.trim(),
-    time:now.toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"})
-  });
-  saveData(); el("noteDialog").close(); renderNotes(); renderDateHeader();
+    time:now.toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"}),
+    createdAt:now.toISOString()
+  };
+  ensureDay(selectedDate).items.push(item);
+  saveData();
+  upsertNoteToCloud(selectedDate,item);
+  el("noteDialog").close(); renderNotes(); renderDateHeader();
 });
 
 el("promptInput").addEventListener("input",e=>{ensureDay(selectedDate).prompt=e.target.value;saveData();});
@@ -262,9 +501,52 @@ el("importInput").onchange=async e=>{
   try{
     const parsed=JSON.parse(await file.text());
     data=parsed;saveData();renderAll();
+    if(currentUser&&cloudReady) await syncAllLocalToCloud();
   }catch{alert("No se pudo importar el archivo.");}
   e.target.value="";
 };
 
+el("accountBtn").onclick=async()=>{
+  if(currentUser){
+    if(!confirm("¿Cerrar sesión de "+(currentUser.email||"esta cuenta")+"?")) return;
+    await supabaseClient.auth.signOut();
+    currentUser=null; cloudReady=false; updateAccountUI();
+    setCloudState("local","Solo local","Sesión cerrada");
+    openAuth();
+  }else openAuth();
+};
+el("authCloseBtn").onclick=()=>el("authDialog").close();
+el("authLocalBtn").onclick=()=>el("authDialog").close();
+el("authForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const email=el("authEmail").value.trim();
+  const password=el("authPassword").value;
+  const msg=el("authMessage");
+  msg.className="auth-message"; msg.textContent="Entrando…";
+  const {data:authData,error}=await supabaseClient.auth.signInWithPassword({email,password});
+  if(error){msg.className="auth-message error";msg.textContent=error.message;return;}
+  msg.className="auth-message ok";msg.textContent="Sesión iniciada.";
+  el("authDialog").close();
+  await activateUser(authData.user);
+});
+el("authSignupBtn").onclick=async()=>{
+  const email=el("authEmail").value.trim();
+  const password=el("authPassword").value;
+  const msg=el("authMessage");
+  if(!email||password.length<6){msg.className="auth-message error";msg.textContent="Introduce un email y una contraseña de al menos 6 caracteres.";return;}
+  msg.className="auth-message";msg.textContent="Creando cuenta…";
+  const {data:authData,error}=await supabaseClient.auth.signUp({email,password});
+  if(error){msg.className="auth-message error";msg.textContent=error.message;return;}
+  if(authData.session&&authData.user){
+    msg.className="auth-message ok";msg.textContent="Cuenta creada.";
+    el("authDialog").close();
+    await activateUser(authData.user);
+  }else{
+    msg.className="auth-message ok";msg.textContent="Cuenta creada. Revisa tu correo para confirmar el acceso y después pulsa Entrar.";
+  }
+};
+window.addEventListener("online",()=>{if(currentUser&&cloudReady) syncAllLocalToCloud();});
+window.addEventListener("offline",()=>setCloudState("error","Guardado local","Sin conexión"));
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
 renderAll();
+initAuth();
