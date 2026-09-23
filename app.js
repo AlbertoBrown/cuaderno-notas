@@ -106,7 +106,8 @@ async function syncDayToCloud(dateKey){
     setCloudState("ok","En la nube",currentUser.email||"Sincronizado");
   }catch(error){
     console.error("Error sincronizando día",error);
-    setCloudState("error","Guardado local","Se sincronizará al recuperar conexión");
+    const detail=(error&&error.message)?error.message:"Error al guardar";
+    setCloudState("error","Error Supabase",detail);
   }
 }
 async function upsertNoteToCloud(dateKey,item){
@@ -117,7 +118,8 @@ async function upsertNoteToCloud(dateKey,item){
     setCloudState("ok","En la nube",currentUser.email||"Sincronizado");
   }catch(error){
     console.error("Error sincronizando nota",error);
-    setCloudState("error","Guardado local","Nota pendiente de sincronizar");
+    const detail=(error&&error.message)?error.message:"Error al guardar nota";
+    setCloudState("error","Error Supabase",detail);
   }
 }
 async function syncAllLocalToCloud(){
@@ -142,7 +144,8 @@ async function syncAllLocalToCloud(){
     setCloudState("ok","En la nube",currentUser.email||"Sincronizado");
   }catch(error){
     console.error("Error sincronizando todo",error);
-    setCloudState("error","Guardado local","No se pudo completar la sincronización");
+    const detail=(error&&error.message)?error.message:"No se pudo completar la sincronización";
+    setCloudState("error","Error Supabase",detail);
   }finally{
     syncingAll=false;
   }
@@ -205,7 +208,13 @@ async function pullCloudData(){
   }catch(error){
     console.error("Error cargando Supabase",error);
     cloudReady=false;
-    setCloudState("error","Solo local","No se pudo conectar con Supabase");
+    const detail=(error&&error.message)?error.message:"No se pudo conectar con Supabase";
+    setCloudState("error","Error Supabase",detail);
+    const msg=el("authMessage");
+    if(msg){
+      msg.className="auth-message error";
+      msg.textContent=detail;
+    }
   }
 }
 async function activateUser(user){
