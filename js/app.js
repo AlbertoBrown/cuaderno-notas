@@ -592,9 +592,32 @@ async function saveVisualNote() {
 
     await putNote(note);
     renderVisualNotes();
-    toast("Guardado · pendiente de sincronizar", "success");
     clearVisualDraft();
-    syncSoon();
+
+    if (state.user && navigator.onLine) {
+      button.innerHTML = "Sincronizando…";
+      try {
+        state.syncStatus = "syncing";
+        setCloudUI();
+        await pushPending();
+        state.syncStatus = "synced";
+        renderVisualNotes();
+        setCloudUI();
+        toast("✓ Guardado en la nube", "success");
+      } catch (syncError) {
+        console.error(syncError);
+        state.syncStatus = "error";
+        state.lastSyncError = String(syncError?.message || syncError || "Error desconocido");
+        renderVisualNotes();
+        setCloudUI();
+        toast("Guardado local · pendiente de sincronizar", "neutral", {
+          label: "Reintentar",
+          onClick: () => el("refreshBtn").click(),
+        });
+      }
+    } else {
+      toast("Guardado local · pendiente de sincronizar", "neutral");
+    }
   } catch (error) {
     console.error(error);
     toast("No se pudo guardar · Reintentar", "error");
