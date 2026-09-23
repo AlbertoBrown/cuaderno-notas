@@ -418,7 +418,7 @@ function renderVisualNotes() {
     card.innerHTML = `
       <button class="visual-thumb-button" type="button" aria-label="Ver imagen">
         <span class="visual-thumb-skeleton"></span>
-        <img class="visual-note-thumb" loading="lazy" decoding="async" fetchpriority="low" alt="" hidden>
+        <img class="visual-note-thumb is-pending" loading="eager" decoding="async" fetchpriority="auto" alt="">
       </button>
       <div class="visual-note-body">
         <div class="visual-note-meta">
@@ -446,7 +446,8 @@ function renderVisualNotes() {
       let fallbackTried = false;
 
       img.onload = () => {
-        img.hidden = false;
+        img.classList.remove("is-pending");
+        img.classList.add("is-loaded");
         skeleton.hidden = true;
       };
 
@@ -459,6 +460,8 @@ function renderVisualNotes() {
             return;
           }
         }
+        img.classList.add("is-pending");
+        skeleton.hidden = false;
         skeleton.textContent = "No se pudo cargar";
         skeleton.classList.add("visual-thumb-empty");
       };
