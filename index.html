@@ -241,6 +241,25 @@
     </main>
   </div>
 
+  <dialog id="visualViewerDialog" class="visual-viewer-dialog">
+    <div class="visual-viewer-card">
+      <div class="visual-viewer-head">
+        <div>
+          <span class="eyebrow">Apunte visual</span>
+          <h3 id="visualViewerTitle">Imagen</h3>
+        </div>
+        <button id="visualViewerClose" class="circle-btn" type="button" aria-label="Cerrar">×</button>
+      </div>
+      <div class="visual-viewer-media">
+        <img id="visualViewerImage" alt="Imagen del apunte visual" />
+      </div>
+      <div class="visual-viewer-prompt">
+        <strong>Prompt</strong>
+        <p id="visualViewerPrompt"></p>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="noteDialog">
     <form method="dialog" id="noteForm" class="note-form">
       <div class="dialog-head">
