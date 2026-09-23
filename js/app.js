@@ -32,6 +32,30 @@ import {
 const el = id => document.getElementById(id);
 const blobUrlCache = new Map();
 const daySaveTimers = new Map();
+const thumbnailQueue = [];
+let thumbnailWorkers = 0;
+const MAX_THUMBNAIL_WORKERS = 4;
+
+function queueThumbnail(task) {
+  return new Promise((resolve, reject) => {
+    thumbnailQueue.push({ task, resolve, reject });
+    runThumbnailQueue();
+  });
+}
+
+function runThumbnailQueue() {
+  while (thumbnailWorkers < MAX_THUMBNAIL_WORKERS && thumbnailQueue.length) {
+    const job = thumbnailQueue.shift();
+    thumbnailWorkers += 1;
+    Promise.resolve()
+      .then(job.task)
+      .then(job.resolve, job.reject)
+      .finally(() => {
+        thumbnailWorkers -= 1;
+        runThumbnailQueue();
+      });
+  }
+}
 let visualDraft = {
   previewUrl: "",
   blob: null,
@@ -383,7 +407,7 @@ function renderVisualNotes() {
     const img = card.querySelector(".visual-note-thumb");
     const skeleton = card.querySelector(".visual-thumb-skeleton");
 
-    thumbnailUrlForNote(note).then(async url => {
+    queueThumbnail(() => thumbnailUrlForNote(note)).then(async url => {
       let fallbackTried = false;
 
       img.onload = () => {
