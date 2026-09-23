@@ -31,7 +31,28 @@ async function loadBitmap(file) {
   });
 }
 
-export async function optimizeImage(file, { maxSide = 1600, quality = 0.78 } = {}) {
+export const IMAGE_QUALITY_PRESETS = {
+  high: {
+    label: "Alta calidad",
+    maxSide: 1800,
+    quality: 0.84,
+    description: "Más detalle · archivo más grande",
+  },
+  balanced: {
+    label: "Equilibrado",
+    maxSide: 1400,
+    quality: 0.72,
+    description: "Buena calidad con menor peso",
+  },
+  small: {
+    label: "Máxima compresión",
+    maxSide: 1100,
+    quality: 0.60,
+    description: "Ocupa menos · ideal para muchas imágenes",
+  },
+};
+
+export async function optimizeImage(file, { maxSide = 1400, quality = 0.72 } = {}) {
   if (!file?.type?.startsWith("image/")) {
     throw new Error("El archivo seleccionado no es una imagen.");
   }
