@@ -31,6 +31,7 @@
         <button class="nav-item" data-view="days"><span>□</span>Días</button>
         <button class="nav-item" data-view="notes"><span>✎</span>Apuntes</button>
         <button class="nav-item" data-view="prompts"><span>◌</span>Prompts</button>
+        <button class="nav-item" data-view="visual"><span>▧</span>Foto + Prompt</button>
         <button class="nav-item" data-view="incidents"><span>!</span>Incidencias</button>
       </nav>
 
@@ -62,7 +63,7 @@
         </div>
       </header>
 
-      <section class="date-strip">
+      <section id="dateStrip" class="date-strip">
         <div class="date-nav">
           <button id="prevDay" class="circle-btn" aria-label="Día anterior">←</button>
           <div>
@@ -74,7 +75,7 @@
         <div class="week-row" id="weekRow"></div>
       </section>
 
-      <section class="content-grid">
+      <section id="mainNotebookView" class="content-grid">
         <div class="feed-column">
           <div class="section-head">
             <div>
@@ -152,6 +153,63 @@
               </div>
             </section>
           </article>
+        </div>
+      </section>
+
+      <section id="visualNotesView" class="visual-notes-view" hidden>
+        <div class="visual-compose-card">
+          <div class="visual-compose-head">
+            <div>
+              <span class="eyebrow">Apunte visual</span>
+              <h2>Imagen + Prompt<span>.</span></h2>
+              <p>Guarda una foto, captura o documento visual junto al prompt que quieras reutilizar.</p>
+            </div>
+            <div class="visual-date-badge" id="visualDateBadge"></div>
+          </div>
+
+          <div class="visual-grid">
+            <div class="image-uploader">
+              <div id="visualImagePlaceholder" class="image-placeholder">
+                <span>＋</span>
+                <strong>Añade una imagen</strong>
+                <small>Foto, captura de pantalla o documento</small>
+              </div>
+              <img id="visualImagePreview" class="visual-image-preview" alt="Vista previa" hidden />
+              <div class="image-actions">
+                <label class="upload-btn">Elegir imagen
+                  <input id="visualImageInput" type="file" accept="image/*" hidden />
+                </label>
+                <label class="upload-btn secondary">Cámara
+                  <input id="visualCameraInput" type="file" accept="image/*" capture="environment" hidden />
+                </label>
+                <button id="visualRemoveImageBtn" class="upload-btn danger" type="button" hidden>Quitar</button>
+              </div>
+            </div>
+
+            <div class="visual-form">
+              <label>Título
+                <input id="visualTitleInput" type="text" placeholder="Ej. Lectura de sonda GOA" />
+              </label>
+              <label>Prompt
+                <textarea id="visualPromptInput" placeholder="Ej. Analiza esta imagen y dime qué datos relevantes aparecen..."></textarea>
+              </label>
+              <div class="visual-form-actions">
+                <button id="visualCopyDraftBtn" class="ghost-btn" type="button">Copiar prompt</button>
+                <button id="visualSaveBtn" class="primary-btn" type="button">Guardar apunte</button>
+              </div>
+              <small id="visualImageInfo" class="visual-image-info"></small>
+            </div>
+          </div>
+        </div>
+
+        <div class="visual-library">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">Biblioteca</span>
+              <h2>Apuntes visuales</h2>
+            </div>
+          </div>
+          <div id="visualNotesList" class="visual-notes-list"></div>
         </div>
       </section>
     </main>
