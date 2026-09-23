@@ -428,3 +428,40 @@ dialog::backdrop{background:rgba(0,0,0,.32);backdrop-filter:blur(5px)}
     margin-bottom:0;
   }
 }
+
+/* v22 · enlaces en apuntes visuales */
+.visual-optional{font-weight:500;color:#999;margin-left:3px}
+.visual-viewer-link{
+  margin-top:12px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  background:#efe9dc;
+  border:1px solid #ddd4c5;
+  border-radius:14px;
+  padding:11px 14px;
+}
+.visual-viewer-link span{
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:#847e74;
+  font-weight:700;
+}
+.visual-viewer-link a{
+  color:#111;
+  font-size:13px;
+  font-weight:700;
+  text-decoration:none;
+  max-width:72%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.visual-viewer-link a:hover{text-decoration:underline}
+.open-visual-link{white-space:nowrap}
+@media(max-width:720px){
+  .visual-viewer-link{align-items:flex-start;flex-direction:column;gap:5px}
+  .visual-viewer-link a{max-width:100%;font-size:12px}
+}
