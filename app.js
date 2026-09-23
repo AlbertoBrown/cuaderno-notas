@@ -229,7 +229,7 @@ async function initAuth(){
       currentUser=null;
       cloudReady=false;
       updateAccountUI();
-      setCloudState("local","Solo local","Inicia sesión para sincronizar");
+      setCloudState("local","Inicia sesión","Sincroniza PC ↔ móvil");
       setTimeout(()=>openAuth(),250);
     }
   }catch(error){
@@ -290,7 +290,7 @@ function loadData(){
 function saveData(syncDate=selectedDate){
   saveLocalOnly();
   if(currentUser&&cloudReady) scheduleDaySync(syncDate);
-  else setCloudState("local","Solo local","Guardado en este dispositivo");
+  else setCloudState("local","Solo local","Inicia sesión para sincronizar");
 }
 function toKey(date){
   const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,"0"), d=String(date.getDate()).padStart(2,"0");
@@ -506,12 +506,13 @@ el("importInput").onchange=async e=>{
   e.target.value="";
 };
 
+el("cloudStatus").onclick=()=>{ if(!currentUser) openAuth(); };
 el("accountBtn").onclick=async()=>{
   if(currentUser){
     if(!confirm("¿Cerrar sesión de "+(currentUser.email||"esta cuenta")+"?")) return;
     await supabaseClient.auth.signOut();
     currentUser=null; cloudReady=false; updateAccountUI();
-    setCloudState("local","Solo local","Sesión cerrada");
+    setCloudState("local","Inicia sesión","Sincroniza PC ↔ móvil");
     openAuth();
   }else openAuth();
 };
