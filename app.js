@@ -1,3 +1,10 @@
+const SUPABASE_URL = "https://hafjrfpnmvyvrcyrqglb.supabase.co";
+const SUPABASE_KEY = "sb_publishable_2yVzzQ5Jwpqjl1MnAYzqRg_evnyGVyw";
+
+const supabaseClient = supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
 const STORAGE_KEY = "cuaderno-notas:v1";
 
 const TYPE_META = {
