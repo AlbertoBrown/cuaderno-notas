@@ -361,3 +361,70 @@ dialog::backdrop{background:rgba(0,0,0,.32);backdrop-filter:blur(5px)}
 .visual-note-thumb.is-loaded{
   opacity:1;
 }
+
+/* v21 · scroll fiable del visor de imágenes en iPhone */
+.visual-viewer-dialog{
+  overflow:hidden;
+  overscroll-behavior:contain;
+}
+.visual-viewer-card{
+  max-height:92dvh;
+  overflow-y:auto;
+  overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  touch-action:pan-y;
+  scrollbar-gutter:stable;
+}
+.visual-viewer-head{
+  position:sticky;
+  top:0;
+  z-index:5;
+  padding-bottom:10px;
+  background:linear-gradient(180deg,#f4f1e8 78%,rgba(244,241,232,.92) 90%,rgba(244,241,232,0));
+}
+.visual-viewer-media{
+  touch-action:pan-y;
+}
+.visual-viewer-prompt{
+  margin-bottom:8px;
+}
+
+@media(max-width:720px){
+  .visual-viewer-dialog{
+    width:calc(100vw - 14px);
+    max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 10px);
+    border-radius:20px;
+  }
+  .visual-viewer-card{
+    max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 10px);
+    padding:12px 12px calc(22px + env(safe-area-inset-bottom));
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    touch-action:pan-y;
+  }
+  .visual-viewer-head{
+    top:0;
+    padding-top:2px;
+    padding-bottom:10px;
+  }
+  .visual-viewer-head .circle-btn{
+    position:sticky;
+    top:0;
+    flex:0 0 auto;
+  }
+  .visual-viewer-media{
+    max-height:none;
+    overflow:visible;
+  }
+  .visual-viewer-media img{
+    width:100%;
+    height:auto;
+    max-height:none;
+    object-fit:contain;
+  }
+  .visual-viewer-prompt{
+    margin-top:12px;
+    margin-bottom:0;
+  }
+}
