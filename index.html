@@ -11,7 +11,6 @@
   <title>Cuaderno · Notas diarias</title>
 
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="apple-touch-icon" href="icon.svg" />
   <link rel="stylesheet" href="styles.css" />
@@ -36,6 +35,10 @@
       </nav>
 
       <div class="sidebar-footer">
+        <div id="cloudStatus" class="cloud-status" data-state="local">
+          <span class="cloud-dot"></span>
+          <div><strong>Solo local</strong><small>Sin sincronización</small></div>
+        </div>
         <button id="exportBtn" class="utility-btn">Exportar datos</button>
         <button id="importBtn" class="utility-btn">Importar datos</button>
         <input id="importInput" type="file" accept="application/json" hidden />
@@ -54,6 +57,7 @@
             <input id="searchInput" placeholder="Buscar en notas..." />
           </label>
           <button id="todayBtn" class="ghost-btn">Ir a hoy</button>
+          <button id="accountBtn" class="ghost-btn account-btn">Iniciar sesión</button>
         </div>
       </header>
 
@@ -177,6 +181,27 @@
         <button value="cancel" class="ghost-btn">Cancelar</button>
         <button id="saveNoteBtn" value="default" class="primary-btn">Guardar nota</button>
       </div>
+    </form>
+  </dialog>
+
+  <dialog id="authDialog" class="auth-dialog">
+    <form id="authForm" class="auth-card">
+      <div class="dialog-head">
+        <div>
+          <span class="eyebrow">Sincronización</span>
+          <h3>Tu cuaderno en todos tus dispositivos</h3>
+        </div>
+        <button id="authCloseBtn" class="circle-btn" type="button" aria-label="Cerrar">×</button>
+      </div>
+      <p class="auth-copy">Entra con la misma cuenta en el ordenador y en el móvil para compartir las mismas notas.</p>
+      <label>Email<input id="authEmail" type="email" autocomplete="email" required placeholder="tu@email.com" /></label>
+      <label>Contraseña<input id="authPassword" type="password" autocomplete="current-password" minlength="6" required placeholder="Mínimo 6 caracteres" /></label>
+      <div class="auth-actions">
+        <button id="authLoginBtn" type="submit" class="primary-btn">Entrar</button>
+        <button id="authSignupBtn" type="button" class="ghost-btn">Crear cuenta</button>
+      </div>
+      <p id="authMessage" class="auth-message"></p>
+      <button id="authLocalBtn" type="button" class="local-only-btn">Seguir solo en este dispositivo</button>
     </form>
   </dialog>
 
