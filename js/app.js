@@ -70,6 +70,8 @@ let visualDraft = {
   busy: false,
 };
 let retryPending = () => {};
+let editingVisualId = null;
+let editorHomeMarker = null;
 
 function toKey(date) {
   const y = date.getFullYear();
@@ -107,6 +109,19 @@ function normalizeLink(value = "") {
   } catch {
     return "";
   }
+}
+
+function currentEditingVisual() {
+  return editingVisualId ? state.notes.get(editingVisualId) || null : null;
+}
+
+function setVisualEditUI(note = null) {
+  editingVisualId = note?.id || null;
+  const banner = el("visualEditBanner");
+  banner.hidden = !note;
+  el("visualEditTitle").textContent = note?.titulo || "";
+  el("visualSaveBtn").innerHTML = note ? "✓&nbsp; Guardar cambios" : "▱&nbsp; Guardar apunte";
+  el("visualCancelEditBtn").hidden = !note;
 }
 
 function timeLabel(iso) {
@@ -445,6 +460,7 @@ function renderVisualNotes() {
         <div class="visual-note-actions">
           <button class="view-visual" type="button">Ver</button>
           <button class="copy-visual" type="button">Copiar</button>
+          <button class="edit-visual" type="button">Editar</button>
           ${note.enlace ? '<button class="open-visual-link" type="button">Enlace ↗</button>' : ""}
           ${note.syncStatus === "error" ? '<button class="retry-visual" type="button">Reintentar</button>' : ""}
           <button class="delete-visual" type="button">Eliminar</button>
@@ -498,6 +514,7 @@ function renderVisualNotes() {
       await navigator.clipboard.writeText(note.contenido || "");
       toast("Prompt copiado", "success");
     };
+    card.querySelector(".edit-visual").onclick = () => beginVisualEdit(note);
     const linkButton = card.querySelector(".open-visual-link");
     if (linkButton) {
       linkButton.onclick = () => {
@@ -526,6 +543,37 @@ function renderVisualNotes() {
   }
 
   list.replaceChildren(fragment);
+}
+
+async function beginVisualEdit(note) {
+  if (!note) return;
+
+  clearVisualDraft({ keepEditMode: true });
+  setVisualEditUI(note);
+
+  el("visualTitleInput").value = note.titulo || "";
+  el("visualLinkInput").value = note.enlace || "";
+  el("visualPromptInput").value = note.contenido || "";
+  el("visualPromptCount").textContent = `${(note.contenido || "").length}/2000`;
+
+  const url = await imageUrlForNote(note);
+  if (url) {
+    visualDraft.previewUrl = url;
+    el("visualImagePreview").src = url;
+    el("visualImagePreview").hidden = false;
+    el("visualImagePlaceholder").hidden = true;
+    el("visualRemoveImageBtn").hidden = true;
+    el("visualImageInfo").textContent = "Imagen actual · selecciona otra solo si quieres reemplazarla.";
+  }
+
+  el("visualTitleInput").focus();
+  el("visualFormCard")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+}
+
+function cancelVisualEdit() {
+  setVisualEditUI(null);
+  clearVisualDraft();
+  toast("Edición cancelada", "neutral");
 }
 
 async function openVisualViewer(note) {
@@ -614,7 +662,7 @@ function syncSoon() {
   });
 }
 
-function clearVisualDraft() {
+function clearVisualDraft({ keepEditMode = false } = {}) {
   revokePreviewUrl(visualDraft.previewUrl);
   visualDraft = {
     previewUrl: "",
@@ -639,6 +687,7 @@ function clearVisualDraft() {
   el("visualPromptCount").textContent = "0/2000";
   el("visualImageInput").value = "";
   el("visualCameraInput").value = "";
+  if (!keepEditMode) setVisualEditUI(null);
 }
 
 function formatBytes(bytes = 0) {
@@ -719,6 +768,7 @@ async function saveVisualNote() {
   const rawLink = el("visualLinkInput").value.trim();
   const enlace = normalizeLink(rawLink);
   const button = el("visualSaveBtn");
+  const editing = currentEditingVisual();
 
   if (rawLink && !enlace) {
     el("visualLinkInput").focus();
@@ -726,7 +776,14 @@ async function saveVisualNote() {
     return;
   }
 
-  if (!visualDraft.previewUrl) {
+  const hasExistingImage = Boolean(
+    editing?.imagenPath ||
+    editing?.legacyImageData ||
+    editing?.pendingBlob
+  );
+  const hasNewImage = Boolean(visualDraft.blob);
+
+  if (!hasNewImage && !hasExistingImage) {
     toast("Añade una imagen", "error");
     return;
   }
@@ -742,37 +799,74 @@ async function saveVisualNote() {
 
   const old = button.innerHTML;
   button.disabled = true;
-  button.innerHTML = "Guardando…";
+  button.innerHTML = editing ? "Guardando cambios…" : "Guardando…";
 
   try {
     const now = nowIso();
-    const note = markNotePending(
-      {
-        id: crypto.randomUUID(),
-        fecha: state.selectedDate,
-        tipo: "visual",
-        titulo: title,
-        etiqueta: `Imagen + prompt · ${qualityPreset().label}`,
-        contenido: prompt,
-        enlace,
-        imagenPath: null,
-        imagenNombre: visualDraft.fileName,
-        pendingBlob: visualDraft.blob,
-        legacyImageData: null,
-        createdAt: now,
-        updatedAt: now,
-        syncStatus: "pending",
-        deleted: false,
-      },
-      {},
-    );
+    let note;
+
+    if (editing) {
+      const previousPath = hasNewImage
+        ? (editing.imagenPath || storagePathForNote(editing) || null)
+        : (editing.previousImagenPath || null);
+
+      note = markNotePending(
+        {
+          ...editing,
+          id: editing.id,
+          fecha: editing.fecha,
+          tipo: "visual",
+          titulo: title,
+          etiqueta: `Imagen + prompt · ${qualityPreset().label}`,
+          contenido: prompt,
+          enlace,
+          imagenPath: hasNewImage ? null : editing.imagenPath,
+          imagenNombre: hasNewImage
+            ? (visualDraft.fileName || editing.imagenNombre || `${editing.id}.jpg`)
+            : editing.imagenNombre,
+          pendingBlob: hasNewImage ? visualDraft.blob : editing.pendingBlob || null,
+          legacyImageData: hasNewImage ? null : editing.legacyImageData || null,
+          previousImagenPath: previousPath,
+          createdAt: editing.createdAt,
+          updatedAt: now,
+          syncStatus: "pending",
+          syncError: null,
+          deleted: false,
+        },
+        {},
+      );
+    } else {
+      note = markNotePending(
+        {
+          id: crypto.randomUUID(),
+          fecha: state.selectedDate,
+          tipo: "visual",
+          titulo: title,
+          etiqueta: `Imagen + prompt · ${qualityPreset().label}`,
+          contenido: prompt,
+          enlace,
+          imagenPath: null,
+          imagenNombre: visualDraft.fileName,
+          pendingBlob: visualDraft.blob,
+          legacyImageData: null,
+          previousImagenPath: null,
+          createdAt: now,
+          updatedAt: now,
+          syncStatus: "pending",
+          deleted: false,
+        },
+        {},
+      );
+    }
 
     await putNote(note);
     renderVisualNotes();
+    const wasEditing = Boolean(editing);
+    setVisualEditUI(null);
     clearVisualDraft();
 
     if (state.user && navigator.onLine) {
-      button.innerHTML = "Sincronizando…";
+      button.innerHTML = wasEditing ? "Sincronizando cambios…" : "Sincronizando…";
       try {
         state.syncStatus = "syncing";
         setCloudUI();
@@ -780,27 +874,27 @@ async function saveVisualNote() {
         state.syncStatus = "synced";
         renderVisualNotes();
         setCloudUI();
-        toast("✓ Guardado en la nube", "success");
+        toast(wasEditing ? "✓ Cambios guardados en la nube" : "✓ Guardado en la nube", "success");
       } catch (syncError) {
         console.error(syncError);
         state.syncStatus = "error";
         state.lastSyncError = String(syncError?.message || syncError || "Error desconocido");
         renderVisualNotes();
         setCloudUI();
-        toast("Guardado local · pendiente de sincronizar", "neutral", {
+        toast(wasEditing ? "Cambios guardados localmente · pendientes de sincronizar" : "Guardado local · pendiente de sincronizar", "neutral", {
           label: "Reintentar",
           onClick: () => el("refreshBtn").click(),
         });
       }
     } else {
-      toast("Guardado local · pendiente de sincronizar", "neutral");
+      toast(wasEditing ? "Cambios guardados localmente · pendientes de sincronizar" : "Guardado local · pendiente de sincronizar", "neutral");
     }
   } catch (error) {
     console.error(error);
     toast("No se pudo guardar · Reintentar", "error");
   } finally {
     button.disabled = false;
-    button.innerHTML = old;
+    button.innerHTML = editingVisualId ? "✓&nbsp; Guardar cambios" : "▱&nbsp; Guardar apunte";
   }
 }
 
@@ -955,12 +1049,41 @@ function bindEvents() {
 
   el("visualImageInput").addEventListener("change", event => handleImageSelection(event.target.files?.[0]));
   el("visualCameraInput").addEventListener("change", event => handleImageSelection(event.target.files?.[0]));
+  el("visualReplaceImageBtn").onclick = () => el("visualImageInput").click();
   el("visualQualitySelect").addEventListener("change", async event => {
     const preset = IMAGE_QUALITY_PRESETS[event.target.value] || IMAGE_QUALITY_PRESETS.balanced;
     el("visualQualityHint").textContent = preset.description;
     if (visualDraft.originalFile) await recompressVisualDraft();
   });
-  el("visualRemoveImageBtn").onclick = clearVisualDraft;
+  el("visualRemoveImageBtn").onclick = async () => {
+    const editing = currentEditingVisual();
+    if (editing) {
+      revokePreviewUrl(visualDraft.previewUrl);
+      visualDraft = {
+        previewUrl: "",
+        blob: null,
+        fileName: "",
+        originalFile: null,
+        originalSize: 0,
+        optimizedSize: 0,
+        qualityPreset: el("visualQualitySelect")?.value || "balanced",
+        width: 0,
+        height: 0,
+        busy: false,
+      };
+      const url = await imageUrlForNote(editing);
+      if (url) {
+        visualDraft.previewUrl = url;
+        el("visualImagePreview").src = url;
+        el("visualImagePreview").hidden = false;
+        el("visualImagePlaceholder").hidden = true;
+        el("visualRemoveImageBtn").hidden = true;
+        el("visualImageInfo").textContent = "Se mantiene la imagen actual.";
+      }
+      return;
+    }
+    clearVisualDraft();
+  };
   el("visualPromptInput").addEventListener("input", event => {
     el("visualPromptCount").textContent = `${event.target.value.length}/2000`;
   });
@@ -969,7 +1092,43 @@ function bindEvents() {
     toast("Prompt copiado", "success");
   };
   el("visualSaveBtn").onclick = saveVisualNote;
+  el("visualCancelEditBtn").onclick = cancelVisualEdit;
   el("visualViewerClose").onclick = () => el("visualViewerDialog").close();
+
+  const editorSection = el("editorSection");
+  const editorDialog = el("editorFullscreenDialog");
+  const editorMount = el("editorFullscreenMount");
+
+  const restoreEditorSection = () => {
+    if (!editorHomeMarker?.parentNode || !editorSection.classList.contains("editor-section-expanded")) return;
+    editorHomeMarker.parentNode.insertBefore(editorSection, editorHomeMarker.nextSibling);
+    editorSection.classList.remove("editor-section-expanded");
+    el("expandEditorBtn").textContent = "⤢ Ampliar";
+  };
+
+  const closeExpandedEditor = () => {
+    restoreEditorSection();
+    if (editorDialog.open) editorDialog.close();
+  };
+
+  el("expandEditorBtn").onclick = () => {
+    if (editorSection.classList.contains("editor-section-expanded")) {
+      closeExpandedEditor();
+      return;
+    }
+    if (!editorHomeMarker) {
+      editorHomeMarker = document.createComment("editor-section-home");
+      editorSection.parentNode.insertBefore(editorHomeMarker, editorSection);
+    }
+    editorMount.appendChild(editorSection);
+    editorSection.classList.add("editor-section-expanded");
+    el("expandEditorBtn").textContent = "↙ Reducir";
+    if (!editorDialog.open) editorDialog.showModal();
+    el("notesEditor").focus();
+  };
+
+  el("editorFullscreenClose").onclick = closeExpandedEditor;
+  editorDialog.addEventListener("close", restoreEditorSection);
 
   document.querySelectorAll(".nav-item").forEach(button => {
     button.onclick = () => {
