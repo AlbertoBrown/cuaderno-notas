@@ -192,8 +192,21 @@ async function pushNote(note, hasVisualColumns) {
 
     if (error) throw error;
 
+    if (
+      current.previousImagenPath &&
+      current.imagenPath &&
+      current.previousImagenPath !== current.imagenPath
+    ) {
+      try {
+        await removeImage(current.previousImagenPath);
+      } catch (cleanupError) {
+        console.warn("La nota se actualizó pero no se pudo borrar la imagen anterior", cleanupError);
+      }
+    }
+
     await putNote({
       ...current,
+      previousImagenPath: null,
       pendingBlob: null,
       legacyImageData: hasVisualColumns ? null : current.legacyImageData,
       syncStatus: "synced",
