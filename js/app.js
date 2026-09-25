@@ -71,6 +71,7 @@ let visualDraft = {
 };
 let retryPending = () => {};
 let editingVisualId = null;
+let editingNoteId = null;
 let editorHomeMarker = null;
 
 function toKey(date) {
@@ -97,6 +98,31 @@ function escapeHtml(value = "") {
     '"': "&quot;",
     "'": "&#039;",
   })[char]);
+}
+
+function parseNormalNoteContent(value = "") {
+  const raw = String(value || "");
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      ("apuntes" in parsed || "prompt" in parsed)
+    ) {
+      return {
+        apuntes: String(parsed.apuntes || ""),
+        prompt: String(parsed.prompt || ""),
+      };
+    }
+  } catch {}
+  return { apuntes: raw, prompt: "" };
+}
+
+function serializeNormalNoteContent(apuntes = "", prompt = "") {
+  return JSON.stringify({
+    apuntes: String(apuntes || ""),
+    prompt: String(prompt || ""),
+  });
 }
 
 function normalizeLink(value = "") {
@@ -280,7 +306,8 @@ function renderNotes() {
   if (state.searchTerm) {
     notes = [...state.notes.values()].filter(note => {
       if (note.tipo === "visual" || note.deleted) return false;
-      const haystack = `${note.titulo} ${note.contenido} ${note.etiqueta} ${note.fecha}`.toLowerCase();
+      const content = parseNormalNoteContent(note.contenido);
+      const haystack = `${note.titulo} ${content.apuntes} ${content.prompt} ${note.etiqueta} ${note.fecha}`.toLowerCase();
       return haystack.includes(state.searchTerm);
     });
   } else {
@@ -304,16 +331,31 @@ function renderNotes() {
     const meta = TYPE_META[note.tipo] || TYPE_META.note;
     const card = document.createElement("article");
     card.className = `note-card ${meta.tone}`;
+    const content = parseNormalNoteContent(note.contenido);
     card.innerHTML = `
       <div class="meta">
         <span>${meta.label}</span>
         <span class="note-sync ${syncClass(note.syncStatus)}">● ${syncLabel(note.syncStatus)}</span>
       </div>
       <h3>${escapeHtml(note.titulo)}</h3>
-      <p>${escapeHtml(note.contenido || "")}</p>
-      <span class="tag">${escapeHtml(note.etiqueta || note.fecha)}</span>
+      <p class="note-card-apuntes">${escapeHtml(content.apuntes || "Sin apuntes todavía.")}</p>
+      ${content.prompt ? `<div class="note-card-prompt"><strong>Prompt</strong><span>${escapeHtml(content.prompt)}</span></div>` : ""}
+      <div class="note-card-footer">
+        <span class="tag">${escapeHtml(note.etiqueta || note.fecha)}</span>
+        <button class="open-note" type="button">Abrir ↗</button>
+      </div>
       <button class="delete-note" title="Eliminar">×</button>
     `;
+    const openNote = () => openNormalNoteEditor(note);
+    card.querySelector(".open-note").onclick = event => {
+      event.stopPropagation();
+      openNote();
+    };
+    card.onclick = event => {
+      if (event.target.closest("button")) return;
+      openNote();
+    };
+
     card.querySelector(".delete-note").onclick = async event => {
       event.stopPropagation();
       if (!confirm("¿Eliminar esta nota?")) return;
@@ -898,6 +940,30 @@ async function saveVisualNote() {
   }
 }
 
+function resetNormalNoteDialog() {
+  editingNoteId = null;
+  el("noteForm").reset();
+  el("noteDialogEyebrow").textContent = "Nuevo registro";
+  el("noteDialogTitle").textContent = "Añadir nota";
+  el("saveNoteBtn").textContent = "Guardar nota";
+  el("copyNotePromptBtn").disabled = false;
+}
+
+function openNormalNoteEditor(note) {
+  if (!note) return;
+  const content = parseNormalNoteContent(note.contenido);
+  editingNoteId = note.id;
+  el("noteDialogEyebrow").textContent = "Detalle de la nota";
+  el("noteDialogTitle").textContent = note.titulo || "Editar nota";
+  el("saveNoteBtn").textContent = "Guardar cambios";
+  el("noteTitle").value = note.titulo || "";
+  el("noteType").value = note.tipo || "note";
+  el("noteTag").value = note.etiqueta || "";
+  el("noteBody").value = content.apuntes || "";
+  el("notePrompt").value = content.prompt || "";
+  if (!el("noteDialog").open) el("noteDialog").showModal();
+}
+
 async function addNormalNote() {
   const title = el("noteTitle").value.trim();
   if (!title) {
@@ -906,25 +972,35 @@ async function addNormalNote() {
   }
 
   const now = nowIso();
-  await putNote({
-    id: crypto.randomUUID(),
-    fecha: state.selectedDate,
+  const apuntes = el("noteBody").value.trim();
+  const prompt = el("notePrompt").value.trim();
+  const existing = editingNoteId ? state.notes.get(editingNoteId) : null;
+
+  const note = {
+    ...(existing || {}),
+    id: existing?.id || crypto.randomUUID(),
+    fecha: existing?.fecha || state.selectedDate,
     tipo: el("noteType").value,
     titulo: title,
     etiqueta: el("noteTag").value.trim(),
-    contenido: el("noteBody").value.trim(),
+    contenido: serializeNormalNoteContent(apuntes, prompt),
     imagenPath: null,
     imagenNombre: null,
-    createdAt: now,
+    createdAt: existing?.createdAt || now,
     updatedAt: now,
     syncStatus: "pending",
+    syncError: null,
     deleted: false,
-  });
+  };
 
+  await putNote(note);
+  const wasEditing = Boolean(existing);
   el("noteDialog").close();
+  resetNormalNoteDialog();
   renderNotes();
   renderDateHeader();
   syncSoon();
+  toast(wasEditing ? "Cambios guardados" : "Nota guardada", "success");
 }
 
 function bindEvents() {
@@ -974,13 +1050,25 @@ function bindEvents() {
   };
 
   el("newNoteBtn").onclick = () => {
-    el("noteForm").reset();
+    resetNormalNoteDialog();
     el("noteDialog").showModal();
   };
   el("saveNoteBtn").onclick = event => {
     event.preventDefault();
     addNormalNote();
   };
+  el("copyNotePromptBtn").onclick = async () => {
+    const prompt = el("notePrompt").value.trim();
+    if (!prompt) {
+      toast("No hay prompt para copiar", "neutral");
+      return;
+    }
+    await navigator.clipboard.writeText(prompt);
+    toast("Prompt copiado", "success");
+  };
+  el("noteDialog").addEventListener("close", () => {
+    editingNoteId = null;
+  });
 
   el("promptInput").addEventListener("input", event => updateDay({ prompt: event.target.value }));
   el("notesEditor").addEventListener("input", event => updateDay({ apuntes: event.target.innerHTML }));
