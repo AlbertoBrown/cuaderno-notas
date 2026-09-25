@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="apple-touch-icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=23" />
+  <link rel="stylesheet" href="styles.css?v=24" />
 </head>
 <body>
   <div class="app-shell">
@@ -304,29 +304,45 @@
     </div>
   </dialog>
 
-  <dialog id="noteDialog">
-    <form method="dialog" id="noteForm" class="note-form">
+  <dialog id="noteDialog" class="note-detail-dialog">
+    <form method="dialog" id="noteForm" class="note-form note-detail-form">
       <div class="dialog-head">
         <div>
-          <span class="eyebrow">Nuevo registro</span>
-          <h3>Añadir nota</h3>
+          <span id="noteDialogEyebrow" class="eyebrow">Nuevo registro</span>
+          <h3 id="noteDialogTitle">Añadir nota</h3>
         </div>
-        <button class="circle-btn" value="cancel">×</button>
+        <button class="circle-btn" value="cancel" aria-label="Cerrar">×</button>
       </div>
 
-      <label>Título<input id="noteTitle" required placeholder="Ej. Diferencia de carga GOB" /></label>
-      <label>Tipo
-        <select id="noteType">
-          <option value="incident">Incidencia</option>
-          <option value="error">Error</option>
-          <option value="note">Apunte</option>
-          <option value="prompt">Prompt</option>
-        </select>
+      <div class="note-fields-grid">
+        <label>Título<input id="noteTitle" required placeholder="Ej. Pedido desglosado" /></label>
+        <label>Tipo
+          <select id="noteType">
+            <option value="incident">Incidencia</option>
+            <option value="error">Error</option>
+            <option value="note">Apunte</option>
+            <option value="prompt">Prompt</option>
+          </select>
+        </label>
+      </div>
+
+      <label>Etiqueta<input id="noteTag" placeholder="Ej. Ventas · PED · GOA" /></label>
+
+      <label class="note-large-field">
+        <span>Apuntes</span>
+        <small>Describe bien el contexto, qué has observado, reglas, ejemplos o cosas que quieras recordar.</small>
+        <textarea id="noteBody" rows="9" placeholder="Escribe aquí el apunte completo..."></textarea>
       </label>
-      <label>Depósito / etiqueta<input id="noteTag" placeholder="Ej. GOB · principal-b" /></label>
-      <label>Detalle<textarea id="noteBody" rows="5" placeholder="Qué has observado, qué quieres revisar..."></textarea></label>
-      <div class="dialog-actions">
+
+      <label class="note-large-field note-prompt-field">
+        <span>Prompt</span>
+        <small>Prompt separado para reutilizarlo después con ChatGPT, Codex, Claude, etc.</small>
+        <textarea id="notePrompt" rows="6" placeholder="Ej. Revisa esta lógica y comprueba que un PED pendiente pueda comercializarse sin modificar el stock físico..."></textarea>
+      </label>
+
+      <div class="dialog-actions note-dialog-actions">
         <button value="cancel" class="ghost-btn">Cancelar</button>
+        <button id="copyNotePromptBtn" type="button" class="ghost-btn">⧉ Copiar prompt</button>
         <button id="saveNoteBtn" value="default" class="primary-btn">Guardar nota</button>
       </div>
     </form>
@@ -354,6 +370,6 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="js/app.js?v=23"></script>
+  <script type="module" src="js/app.js?v=24"></script>
 </body>
 </html>
