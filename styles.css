@@ -567,3 +567,125 @@ dialog::backdrop{background:rgba(0,0,0,.32);backdrop-filter:blur(5px)}
   .image-actions{grid-template-columns:1fr 1fr 1fr}
   .upload-btn.danger{grid-column:auto}
 }
+
+/* v24 · notas detalladas con apartado de prompt */
+.note-card{cursor:pointer}
+.note-card-apuntes{
+  display:-webkit-box;
+  -webkit-line-clamp:4;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+  white-space:pre-wrap;
+}
+.note-card-prompt{
+  margin-top:10px;
+  padding:9px 10px;
+  border-radius:12px;
+  background:rgba(255,255,255,.42);
+  display:grid;
+  gap:3px;
+}
+.note-card-prompt strong{
+  font-size:9px;
+  text-transform:uppercase;
+  letter-spacing:.09em;
+  opacity:.65;
+}
+.note-card-prompt span{
+  font-size:11px;
+  line-height:1.35;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.note-card-footer{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-top:11px;
+  padding-right:34px;
+}
+.note-card-footer .tag{margin-top:0}
+.open-note{
+  border:1px solid rgba(17,17,17,.16);
+  background:rgba(255,255,255,.55);
+  border-radius:999px;
+  padding:6px 10px;
+  font-size:10px;
+  font-weight:700;
+}
+.note-detail-dialog{
+  width:min(820px,calc(100vw - 24px));
+  max-height:92dvh;
+  overflow:hidden;
+}
+.note-detail-form{
+  max-height:92dvh;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  padding:22px;
+}
+.note-fields-grid{
+  display:grid;
+  grid-template-columns:minmax(0,2fr) minmax(150px,1fr);
+  gap:12px;
+}
+.note-large-field>span{
+  font-weight:750;
+  color:#171717;
+}
+.note-large-field>small{
+  color:#8a8378;
+  line-height:1.35;
+}
+.note-detail-form textarea{
+  width:100%;
+  resize:vertical;
+  font-size:15px;
+  line-height:1.5;
+}
+.note-large-field #noteBody{min-height:220px}
+.note-prompt-field{
+  margin-top:16px!important;
+  padding:14px;
+  border-radius:16px;
+  background:#f5e8a9;
+}
+.note-prompt-field #notePrompt{
+  min-height:150px;
+  background:#fffaf0;
+}
+.note-dialog-actions{
+  position:sticky;
+  bottom:-22px;
+  z-index:3;
+  padding:12px 0 2px;
+  background:linear-gradient(180deg,rgba(244,241,232,0),#f4f1e8 28%);
+}
+
+@media(max-width:720px){
+  .note-detail-dialog{
+    width:100vw;
+    max-height:100dvh;
+    height:100dvh;
+    margin:0;
+    border-radius:0;
+  }
+  .note-detail-form{
+    max-height:100dvh;
+    padding:calc(14px + env(safe-area-inset-top)) 12px calc(18px + env(safe-area-inset-bottom));
+  }
+  .note-fields-grid{grid-template-columns:1fr}
+  .note-detail-form input,
+  .note-detail-form textarea,
+  .note-detail-form select{font-size:16px}
+  .note-large-field #noteBody{min-height:260px}
+  .note-prompt-field #notePrompt{min-height:190px}
+  .note-dialog-actions{
+    bottom:calc(-18px - env(safe-area-inset-bottom));
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+  .note-dialog-actions .primary-btn{grid-column:1/-1}
+}
