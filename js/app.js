@@ -1026,12 +1026,34 @@ function bindEvents() {
     renderAll();
   };
 
-  el("exactDatePicker").addEventListener("change", event => {
-    const value = event.target.value;
+  const exactDatePicker = el("exactDatePicker");
+  const calendarBtn = el("calendarBtn");
+
+  const applyExactDate = () => {
+    const value = exactDatePicker.value;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
     state.selectedDate = value;
     renderAll();
-  });
+  };
+
+  exactDatePicker.addEventListener("change", applyExactDate);
+  exactDatePicker.addEventListener("input", applyExactDate);
+
+  calendarBtn.onclick = () => {
+    exactDatePicker.value = state.selectedDate;
+    try {
+      if (typeof exactDatePicker.showPicker === "function") {
+        exactDatePicker.showPicker();
+      } else {
+        exactDatePicker.focus({ preventScroll: true });
+        exactDatePicker.click();
+      }
+    } catch (error) {
+      console.warn("No se pudo abrir el selector nativo de fecha", error);
+      exactDatePicker.focus();
+      exactDatePicker.click();
+    }
+  };
 
   el("refreshBtn").onclick = async () => {
     const btn = el("refreshBtn");
