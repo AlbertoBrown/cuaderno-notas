@@ -248,6 +248,11 @@ function renderDateHeader() {
     month: "long",
   });
 
+  const exactDatePicker = el("exactDatePicker");
+  if (exactDatePicker && exactDatePicker.value !== state.selectedDate) {
+    exactDatePicker.value = state.selectedDate;
+  }
+
   const badge = el("visualDateBadge");
   if (badge) {
     badge.textContent = formatDate(date, {
@@ -1020,6 +1025,13 @@ function bindEvents() {
     state.selectedDate = toKey(new Date());
     renderAll();
   };
+
+  el("exactDatePicker").addEventListener("change", event => {
+    const value = event.target.value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+    state.selectedDate = value;
+    renderAll();
+  });
 
   el("refreshBtn").onclick = async () => {
     const btn = el("refreshBtn");
