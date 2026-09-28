@@ -690,9 +690,13 @@ dialog::backdrop{background:rgba(0,0,0,.32);backdrop-filter:blur(5px)}
   .note-dialog-actions .primary-btn{grid-column:1/-1}
 }
 
-/* v25 · selector de fecha exacta */
-.date-picker-control{
+/* v26 · selector de fecha exacta fiable */
+.date-picker-wrap{
   position:relative;
+  display:inline-flex;
+  align-items:center;
+}
+.date-picker-control{
   display:inline-flex;
   align-items:center;
   gap:7px;
@@ -705,29 +709,25 @@ dialog::backdrop{background:rgba(0,0,0,.32);backdrop-filter:blur(5px)}
   font-size:12px;
   font-weight:700;
   cursor:pointer;
-  overflow:hidden;
   user-select:none;
 }
 .date-picker-control:hover{background:#fff}
+.date-picker-control:active{transform:translateY(1px)}
 .date-picker-icon{font-size:16px;line-height:1}
-.date-picker-control input{
+.date-picker-native{
   position:absolute;
-  inset:0;
-  width:100%;
-  height:100%;
-  opacity:.001;
-  cursor:pointer;
+  width:1px;
+  height:1px;
+  right:6px;
+  bottom:2px;
+  opacity:0;
   border:0;
-}
-.date-picker-control:focus-within{
-  outline:2px solid rgba(17,17,17,.16);
-  outline-offset:2px;
+  padding:0;
+  pointer-events:none;
 }
 
 @media(max-width:720px){
-  .date-nav{
-    flex-wrap:wrap;
-  }
+  .date-nav{flex-wrap:wrap}
   .date-picker-control{
     min-height:36px;
     padding:0 10px;
