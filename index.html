@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="apple-touch-icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=26" />
+  <link rel="stylesheet" href="styles.css?v=27" />
 </head>
 <body>
   <div class="app-shell">
@@ -28,7 +28,7 @@
 
       <nav class="side-nav">
         <button class="nav-item active" data-view="today"><span>⌂</span>Hoy</button>
-        <button class="nav-item" data-view="days"><span>□</span>Días</button>
+        <button class="nav-item" data-view="calendar"><span>▦</span>Calendario</button>
         <button class="nav-item" data-view="notes"><span>✎</span>Apuntes</button>
         <button class="nav-item" data-view="prompts"><span>◌</span>Prompts</button>
         <button class="nav-item" data-view="incidents"><span>!</span>Incidencias</button>
@@ -161,6 +161,88 @@
               </div>
             </section>
           </article>
+        </div>
+      </section>
+
+      <section id="calendarView" class="calendar-view" hidden>
+        <div class="calendar-page-head">
+          <div>
+            <span class="eyebrow">Vista mensual</span>
+            <h2 id="calendarPageTitle">Calendario<span>.</span></h2>
+            <p>Ve de un vistazo qué has apuntado cada día y abre el detalle cuando lo necesites.</p>
+          </div>
+          <div class="calendar-stats">
+            <article class="calendar-stat yellow"><span>▤</span><div><small>Notas del mes</small><strong id="calendarMonthNotes">0</strong></div></article>
+            <article class="calendar-stat peach"><span>◉</span><div><small>Prompts</small><strong id="calendarMonthPrompts">0</strong></div></article>
+            <article class="calendar-stat green"><span>✓</span><div><small>Pendientes</small><strong id="calendarMonthPending">0</strong></div></article>
+          </div>
+        </div>
+
+        <div class="calendar-layout">
+          <section class="calendar-month-card">
+            <div class="calendar-toolbar">
+              <div class="calendar-month-nav">
+                <button id="calendarPrevMonth" class="circle-btn" type="button" aria-label="Mes anterior">←</button>
+                <strong id="calendarMonthLabel"></strong>
+                <button id="calendarNextMonth" class="circle-btn" type="button" aria-label="Mes siguiente">→</button>
+                <button id="calendarTodayBtn" class="ghost-btn" type="button">Hoy</button>
+              </div>
+              <div class="calendar-legend">
+                <span><i class="dot note"></i>Notas</span>
+                <span><i class="dot prompt"></i>Prompt</span>
+                <span><i class="dot pending"></i>Pendientes</span>
+                <span><i class="dot incident"></i>Incidencias</span>
+              </div>
+            </div>
+
+            <div class="calendar-weekdays">
+              <span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span>
+            </div>
+            <div id="calendarGrid" class="calendar-grid"></div>
+          </section>
+
+          <aside class="calendar-day-panel">
+            <div class="calendar-day-head">
+              <div>
+                <span id="calendarDayWeekday" class="eyebrow"></span>
+                <h3 id="calendarDayTitle"></h3>
+              </div>
+              <button id="calendarOpenDayBtn" class="ghost-btn" type="button">Abrir día ↗</button>
+            </div>
+
+            <div class="calendar-day-stats">
+              <div><span class="calendar-mini yellow">▤</span><strong id="calendarDayNotes">0</strong><small>Notas</small></div>
+              <div><span class="calendar-mini peach">◉</span><strong id="calendarDayPrompts">0</strong><small>Prompts</small></div>
+              <div><span class="calendar-mini green">✓</span><strong id="calendarDayPending">0</strong><small>Pendientes</small></div>
+              <div><span class="calendar-mini purple">!</span><strong id="calendarDayIncidents">0</strong><small>Incidencias</small></div>
+            </div>
+
+            <section class="calendar-detail-box prompt">
+              <div class="calendar-detail-title"><span>💡</span><strong>Prompt del día</strong></div>
+              <p id="calendarDayPrompt">Sin prompt para este día.</p>
+            </section>
+
+            <section class="calendar-detail-box">
+              <div class="calendar-detail-title"><span>▤</span><strong>Conclusión rápida</strong></div>
+              <p id="calendarDayConclusion">Sin conclusiones todavía.</p>
+            </section>
+
+            <section class="calendar-detail-section">
+              <div class="calendar-detail-section-head"><strong>✓ Pendientes <span id="calendarTasksCount"></span></strong></div>
+              <div id="calendarTasksList" class="calendar-tasks-list"></div>
+            </section>
+
+            <section class="calendar-detail-section">
+              <div class="calendar-detail-section-head"><strong>Notas del día <span id="calendarNotesCount"></span></strong></div>
+              <div id="calendarNotesPreview" class="calendar-notes-preview"></div>
+            </section>
+
+            <button id="calendarExpandBtn" class="calendar-expand-btn" type="button">Ver un poco más ↓</button>
+            <div id="calendarMoreDetail" class="calendar-more-detail" hidden>
+              <span class="eyebrow">Apuntes del día</span>
+              <div id="calendarDayApuntes" class="calendar-apuntes-preview">Sin apuntes.</div>
+            </div>
+          </aside>
         </div>
       </section>
 
@@ -377,6 +459,6 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="js/app.js?v=26"></script>
+  <script type="module" src="js/app.js?v=27"></script>
 </body>
 </html>
