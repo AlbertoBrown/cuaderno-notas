@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="apple-touch-icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=25" />
+  <link rel="stylesheet" href="styles.css?v=26" />
 </head>
 <body>
   <div class="app-shell">
@@ -71,11 +71,13 @@
             <div class="selected-date-sub" id="selectedDateSub"></div>
           </div>
           <button id="nextDay" class="circle-btn" aria-label="Día siguiente">→</button>
-          <label class="date-picker-control" title="Ir a una fecha exacta">
-            <span class="date-picker-icon" aria-hidden="true">▦</span>
-            <span class="date-picker-label">Calendario</span>
-            <input id="exactDatePicker" type="date" aria-label="Ir a una fecha exacta" />
-          </label>
+          <div class="date-picker-wrap">
+            <button id="calendarBtn" class="date-picker-control" type="button" title="Ir a una fecha exacta" aria-label="Abrir calendario">
+              <span class="date-picker-icon" aria-hidden="true">▦</span>
+              <span class="date-picker-label">Calendario</span>
+            </button>
+            <input id="exactDatePicker" class="date-picker-native" type="date" aria-label="Seleccionar una fecha exacta" />
+          </div>
         </div>
         <div class="week-row" id="weekRow"></div>
       </section>
@@ -375,6 +377,6 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="js/app.js?v=25"></script>
+  <script type="module" src="js/app.js?v=26"></script>
 </body>
 </html>
