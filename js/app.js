@@ -73,6 +73,8 @@ let retryPending = () => {};
 let editingVisualId = null;
 let editingNoteId = null;
 let editorHomeMarker = null;
+let calendarMonthKey = state.selectedDate.slice(0, 7);
+let calendarDetailExpanded = false;
 
 function toKey(date) {
   const y = date.getFullYear();
@@ -646,23 +648,200 @@ async function openVisualViewer(note) {
   if (!dialog.open) dialog.showModal();
 }
 
+function stripHtml(value = "") {
+  const node = document.createElement("div");
+  node.innerHTML = String(value || "");
+  return (node.textContent || node.innerText || "").trim();
+}
+
+function calendarDaySummary(fecha) {
+  const day = state.days.get(fecha) || { prompt: "", apuntes: "", conclusiones: "", tareas: [] };
+  const notes = notesForDate(fecha).filter(note => note.tipo !== "visual");
+  const notePrompts = notes.reduce((total, note) => {
+    return total + (parseNormalNoteContent(note.contenido).prompt ? 1 : 0);
+  }, 0);
+  return {
+    day,
+    notes,
+    prompts: (day.prompt ? 1 : 0) + notePrompts,
+    pending: (day.tareas || []).filter(task => !task.done),
+    incidents: notes.filter(note => note.tipo === "incident" || note.tipo === "error"),
+  };
+}
+
+function setCalendarMonthFromDate(fecha) {
+  calendarMonthKey = fecha.slice(0, 7);
+}
+
+function calendarMonthDate() {
+  const [y, m] = calendarMonthKey.split("-").map(Number);
+  return new Date(y, m - 1, 1);
+}
+
+function moveCalendarMonth(delta) {
+  const current = calendarMonthDate();
+  const selected = fromKey(state.selectedDate);
+  const day = selected.getDate();
+  const next = new Date(current.getFullYear(), current.getMonth() + delta, 1);
+  const maxDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  next.setDate(Math.min(day, maxDay));
+  state.selectedDate = toKey(next);
+  setCalendarMonthFromDate(state.selectedDate);
+  calendarDetailExpanded = false;
+  renderAll();
+}
+
+function renderCalendarDetail() {
+  const date = fromKey(state.selectedDate);
+  const summary = calendarDaySummary(state.selectedDate);
+
+  el("calendarDayWeekday").textContent = formatDate(date, { weekday: "long" });
+  el("calendarDayTitle").textContent = formatDate(date, { day: "2-digit", month: "2-digit", year: "numeric" });
+  el("calendarDayNotes").textContent = String(summary.notes.length);
+  el("calendarDayPrompts").textContent = String(summary.prompts);
+  el("calendarDayPending").textContent = String(summary.pending.length);
+  el("calendarDayIncidents").textContent = String(summary.incidents.length);
+  el("calendarDayPrompt").textContent = summary.day.prompt || "Sin prompt para este día.";
+  el("calendarDayConclusion").textContent = summary.day.conclusiones || "Sin conclusiones todavía.";
+
+  const tasks = el("calendarTasksList");
+  tasks.replaceChildren();
+  el("calendarTasksCount").textContent = summary.pending.length ? `(${summary.pending.length})` : "";
+  if (!summary.pending.length) {
+    tasks.innerHTML = '<div class="calendar-empty-mini">No hay pendientes abiertos.</div>';
+  } else {
+    summary.pending.slice(0, 5).forEach(task => {
+      const row = document.createElement("div");
+      row.className = "calendar-task-row";
+      row.innerHTML = `<span class="calendar-task-check"></span><span>${escapeHtml(task.text)}</span>`;
+      tasks.appendChild(row);
+    });
+  }
+
+  const preview = el("calendarNotesPreview");
+  preview.replaceChildren();
+  el("calendarNotesCount").textContent = summary.notes.length ? `(${summary.notes.length})` : "";
+  if (!summary.notes.length) {
+    preview.innerHTML = '<div class="calendar-empty-mini">No hay notas registradas.</div>';
+  } else {
+    summary.notes.slice(0, 3).forEach(note => {
+      const meta = TYPE_META[note.tipo] || TYPE_META.note;
+      const content = parseNormalNoteContent(note.contenido);
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = `calendar-note-mini ${meta.tone}`;
+      card.innerHTML = `
+        <span class="calendar-note-type">${escapeHtml(meta.label)}</span>
+        <strong>${escapeHtml(note.titulo || "Sin título")}</strong>
+        <small>${escapeHtml(content.apuntes || content.prompt || "Sin detalle.")}</small>
+        <span class="calendar-note-arrow">→</span>
+      `;
+      card.onclick = () => openNormalNoteEditor(note);
+      preview.appendChild(card);
+    });
+  }
+
+  el("calendarMoreDetail").hidden = !calendarDetailExpanded;
+  el("calendarExpandBtn").textContent = calendarDetailExpanded ? "Ver menos ↑" : "Ver un poco más ↓";
+  el("calendarDayApuntes").textContent = stripHtml(summary.day.apuntes || "") || "Sin apuntes.";
+}
+
+function renderCalendarView() {
+  const monthDate = calendarMonthDate();
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const monthPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const label = formatDate(monthDate, { month: "long", year: "numeric" });
+  const pretty = label.charAt(0).toUpperCase() + label.slice(1);
+
+  el("calendarPageTitle").innerHTML = `${pretty}<span>.</span>`;
+  el("calendarMonthLabel").textContent = pretty;
+
+  const monthNotes = [...state.notes.values()].filter(note =>
+    !note.deleted && note.tipo !== "visual" && String(note.fecha || "").startsWith(monthPrefix)
+  );
+
+  let monthPrompts = 0;
+  let monthPending = 0;
+  for (const [fecha, day] of state.days.entries()) {
+    if (!fecha.startsWith(monthPrefix)) continue;
+    if (day.prompt) monthPrompts += 1;
+    monthPending += (day.tareas || []).filter(task => !task.done).length;
+  }
+  for (const note of monthNotes) {
+    if (parseNormalNoteContent(note.contenido).prompt) monthPrompts += 1;
+  }
+
+  el("calendarMonthNotes").textContent = String(monthNotes.length);
+  el("calendarMonthPrompts").textContent = String(monthPrompts);
+  el("calendarMonthPending").textContent = String(monthPending);
+
+  const first = new Date(year, month, 1);
+  const offset = (first.getDay() + 6) % 7;
+  const start = new Date(year, month, 1 - offset);
+  const grid = el("calendarGrid");
+  const fragment = document.createDocumentFragment();
+
+  for (let i = 0; i < 42; i += 1) {
+    const date = new Date(start);
+    date.setDate(start.getDate() + i);
+    const key = toKey(date);
+    const summary = calendarDaySummary(key);
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "calendar-day-cell";
+    if (date.getMonth() !== month) cell.classList.add("outside");
+    if (key === state.selectedDate) cell.classList.add("selected");
+    if (key === toKey(new Date())) cell.classList.add("today");
+
+    const events = [];
+    if (summary.notes.length) events.push(`<span><i class="dot note"></i><b>${summary.notes.length}</b><em>nota${summary.notes.length === 1 ? "" : "s"}</em></span>`);
+    if (summary.prompts) events.push(`<span><i class="dot prompt"></i><b>${summary.prompts}</b><em>prompt${summary.prompts === 1 ? "" : "s"}</em></span>`);
+    if (summary.pending.length) events.push(`<span><i class="dot pending"></i><b>${summary.pending.length}</b><em>pendiente${summary.pending.length === 1 ? "" : "s"}</em></span>`);
+    if (summary.incidents.length) events.push(`<span><i class="dot incident"></i><b>${summary.incidents.length}</b><em>incidencia${summary.incidents.length === 1 ? "" : "s"}</em></span>`);
+
+    cell.innerHTML = `<strong class="calendar-day-number">${date.getDate()}</strong><div class="calendar-day-events">${events.join("")}</div>`;
+    cell.onclick = () => {
+      state.selectedDate = key;
+      if (date.getMonth() !== month) setCalendarMonthFromDate(key);
+      calendarDetailExpanded = false;
+      renderCalendarView();
+    };
+    fragment.appendChild(cell);
+  }
+
+  grid.replaceChildren(fragment);
+  renderCalendarDetail();
+}
+
 function showView(view) {
   state.currentView = view;
   const visual = view === "visual";
-  el("mainNotebookView").hidden = visual;
+  const calendar = view === "calendar";
+  el("mainNotebookView").hidden = visual || calendar;
   el("visualNotesView").hidden = !visual;
-  el("pageTitle").innerHTML = visual ? "Apuntes visuales<span>.</span>" : "Mis notas<span>.</span>";
+  el("calendarView").hidden = !calendar;
+  el("dateStrip").hidden = calendar;
+  el("pageTitle").innerHTML = visual
+    ? "Apuntes visuales<span>.</span>"
+    : calendar
+      ? "Calendario<span>.</span>"
+      : "Mis notas<span>.</span>";
   document.querySelectorAll(".nav-item").forEach(button => {
     button.classList.toggle("active", button.dataset.view === view);
   });
 }
 
 function renderAll() {
-  renderDateHeader();
-  if (state.currentView === "visual") renderVisualNotes();
-  else {
-    renderDay();
-    renderNotes();
+  if (state.currentView === "calendar") {
+    renderCalendarView();
+  } else {
+    renderDateHeader();
+    if (state.currentView === "visual") renderVisualNotes();
+    else {
+      renderDay();
+      renderNotes();
+    }
   }
   setCloudUI();
 }
@@ -705,6 +884,7 @@ function syncSoon() {
     }
     setCloudUI();
     if (state.currentView === "visual") renderVisualNotes();
+    else if (state.currentView === "calendar") renderCalendarView();
     else renderNotes();
   });
 }
@@ -1023,6 +1203,7 @@ function bindEvents() {
   };
   el("todayBtn").onclick = () => {
     state.selectedDate = toKey(new Date());
+    if (state.currentView === "calendar") setCalendarMonthFromDate(state.selectedDate);
     renderAll();
   };
 
@@ -1033,6 +1214,7 @@ function bindEvents() {
     const value = exactDatePicker.value;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
     state.selectedDate = value;
+    if (state.currentView === "calendar") setCalendarMonthFromDate(value);
     renderAll();
   };
 
@@ -1053,6 +1235,23 @@ function bindEvents() {
       exactDatePicker.focus();
       exactDatePicker.click();
     }
+  };
+
+  el("calendarPrevMonth").onclick = () => moveCalendarMonth(-1);
+  el("calendarNextMonth").onclick = () => moveCalendarMonth(1);
+  el("calendarTodayBtn").onclick = () => {
+    state.selectedDate = toKey(new Date());
+    setCalendarMonthFromDate(state.selectedDate);
+    calendarDetailExpanded = false;
+    renderAll();
+  };
+  el("calendarOpenDayBtn").onclick = () => {
+    showView("today");
+    renderAll();
+  };
+  el("calendarExpandBtn").onclick = () => {
+    calendarDetailExpanded = !calendarDetailExpanded;
+    renderCalendarDetail();
   };
 
   el("refreshBtn").onclick = async () => {
@@ -1262,7 +1461,10 @@ function bindEvents() {
       } else if (view === "notes") state.currentFilter = "note";
       else if (view === "prompts") state.currentFilter = "prompt";
       else if (view === "incidents") state.currentFilter = "incident";
-      else if (view === "days") state.currentFilter = "all";
+      else if (view === "calendar") {
+        setCalendarMonthFromDate(state.selectedDate);
+        calendarDetailExpanded = false;
+      }
       renderAll();
     };
   });
