@@ -665,35 +665,96 @@ function cleanupCalendarDragUI() {
   document.querySelectorAll(".calendar-drag-ghost").forEach(node => node.remove());
 }
 
+function pickCalendarDropDate(payload) {
+  const picker = document.createElement("input");
+  picker.type = "date";
+  picker.value = state.selectedDate;
+  picker.className = "calendar-drop-date-picker";
+  picker.setAttribute("aria-label", "Elegir fecha destino");
+  document.body.appendChild(picker);
+
+  let resolved = false;
+  const cleanup = () => {
+    if (resolved) return;
+    resolved = true;
+    picker.remove();
+  };
+
+  picker.addEventListener("change", async () => {
+    const targetDate = picker.value;
+    cleanup();
+    if (targetDate) await dropCalendarItem(payload, targetDate);
+  }, { once: true });
+
+  picker.addEventListener("blur", () => setTimeout(cleanup, 250), { once: true });
+
+  try {
+    picker.focus({ preventScroll: true });
+    if (typeof picker.showPicker === "function") picker.showPicker();
+    else picker.click();
+  } catch {
+    picker.click();
+  }
+}
+
 async function dropCalendarItem(payload, targetDate) {
   if (!payload || !targetDate) return;
 
   if (payload.kind === "note") {
     const note = state.notes.get(payload.noteId);
-    if (!note || note.deleted || note.fecha === targetDate) return;
+    if (!note || note.deleted) return;
+    if (note.fecha === targetDate) {
+      toast("La nota ya está en esa fecha", "neutral");
+      return;
+    }
 
-    await putNote({
+    const sourceDate = note.fecha;
+    const moved = {
       ...note,
       fecha: targetDate,
       updatedAt: nowIso(),
       syncStatus: "pending",
       syncError: null,
-    });
+    };
+    await putNote(moved);
 
     state.selectedDate = targetDate;
     setCalendarMonthFromDate(targetDate);
     calendarDetailExpanded = false;
     renderCalendarView();
     syncSoon();
-    toast(`Nota movida al ${formatCalendarDropDate(targetDate)}`, "success");
+
+    toast(`Nota movida al ${formatCalendarDropDate(targetDate)}`, "success", {
+      label: "Deshacer",
+      onClick: async () => {
+        const current = state.notes.get(note.id);
+        if (!current || current.deleted) return;
+        await putNote({
+          ...current,
+          fecha: sourceDate,
+          updatedAt: nowIso(),
+          syncStatus: "pending",
+          syncError: null,
+        });
+        state.selectedDate = sourceDate;
+        setCalendarMonthFromDate(sourceDate);
+        renderCalendarView();
+        syncSoon();
+      },
+    });
     return;
   }
 
   if (payload.kind === "prompt") {
-    if (!payload.prompt || payload.sourceDate === targetDate) return;
+    if (!payload.prompt) return;
+    if (payload.sourceDate === targetDate) {
+      toast("Ese prompt ya pertenece a esa fecha", "neutral");
+      return;
+    }
 
     const target = ensureDay(targetDate);
-    if (target.prompt && target.prompt !== payload.prompt) {
+    const previousPrompt = target.prompt || "";
+    if (previousPrompt && previousPrompt !== payload.prompt) {
       const replace = confirm(
         `El ${formatCalendarDropDate(targetDate)} ya tiene un prompt. ¿Quieres sustituirlo?`,
       );
@@ -708,7 +769,16 @@ async function dropCalendarItem(payload, targetDate) {
     calendarDetailExpanded = false;
     renderCalendarView();
     scheduleDayPush(targetDate);
-    toast(`Prompt copiado al ${formatCalendarDropDate(targetDate)}`, "success");
+
+    toast(`Prompt copiado al ${formatCalendarDropDate(targetDate)}`, "success", {
+      label: "Deshacer",
+      onClick: async () => {
+        const restored = markDayPending(targetDate, { prompt: previousPrompt });
+        await putDay(restored);
+        renderCalendarView();
+        scheduleDayPush(targetDate);
+      },
+    });
   }
 }
 
@@ -781,6 +851,8 @@ function attachCalendarDragHandle(handle, payload, label, sourceNode = null) {
         await dropCalendarItem(payload, targetDate);
       } else if (dragging) {
         toast("Suelta sobre un día del calendario", "neutral");
+      } else {
+        pickCalendarDropDate(payload);
       }
 
       eventEnd?.preventDefault?.();
@@ -896,7 +968,7 @@ function renderCalendarDetail() {
         <span class="calendar-note-type">${escapeHtml(meta.label)}</span>
         <strong>${escapeHtml(note.titulo || "Sin título")}</strong>
         <small>${escapeHtml(content.apuntes || content.prompt || "Sin detalle.")}</small>
-        <span class="calendar-note-drag" role="button" tabindex="0" title="Arrastrar a otra fecha" aria-label="Arrastrar nota a otra fecha">⠿</span>
+        <span class="calendar-note-drag" role="button" tabindex="0" title="Arrastrar o tocar para elegir fecha" aria-label="Mover nota a otra fecha">⠿</span>
         <span class="calendar-note-arrow">→</span>
       `;
       const dragHandle = card.querySelector(".calendar-note-drag");
