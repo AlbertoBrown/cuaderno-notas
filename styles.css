@@ -1303,3 +1303,33 @@ body.calendar-dragging .calendar-day-cell{
     width:164px;
   }
 }
+
+/* v30 · robustez drag/drop + selector táctil + deshacer */
+.calendar-drop-date-picker{
+  position:fixed;
+  right:8px;
+  bottom:calc(88px + env(safe-area-inset-bottom));
+  width:1px;
+  height:1px;
+  opacity:.01;
+  pointer-events:auto;
+  z-index:10000;
+  border:0;
+  padding:0;
+}
+.calendar-drag-handle,
+.calendar-note-drag{
+  -webkit-tap-highlight-color:transparent;
+}
+.calendar-drag-handle:focus-visible,
+.calendar-note-drag:focus-visible{
+  outline:2px solid #111;
+  outline-offset:2px;
+}
+@media(max-width:480px){
+  .calendar-drag-hint{
+    display:block;
+    margin-top:7px;
+    line-height:1.35;
+  }
+}
