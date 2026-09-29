@@ -1333,3 +1333,59 @@ body.calendar-dragging .calendar-day-cell{
     line-height:1.35;
   }
 }
+
+/* v31 · múltiples prompts por día */
+.daily-prompt-count{
+  min-width:24px;height:24px;padding:0 7px;border-radius:999px;
+  background:rgba(255,255,255,.55);display:inline-grid;place-items:center;
+  font-size:10px;font-weight:800;
+}
+.daily-prompts-list{display:grid;gap:8px;margin-top:12px}
+.daily-prompts-empty{
+  padding:11px 12px;border:1px dashed rgba(17,17,17,.16);border-radius:13px;
+  color:#7b725e;font-size:11px;background:rgba(255,255,255,.18)
+}
+.daily-prompt-card{
+  display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:9px;align-items:start;
+  padding:10px;border-radius:14px;background:rgba(255,255,255,.48);
+  border:1px solid rgba(17,17,17,.08)
+}
+.daily-prompt-number{
+  width:28px;height:28px;display:grid;place-items:center;border-radius:50%;
+  background:#111;color:#fff;font-size:10px;font-weight:800
+}
+.daily-prompt-card p{margin:2px 0 0;min-width:0;white-space:pre-wrap;font-size:13px;line-height:1.42}
+.daily-prompt-actions{display:flex;gap:4px}
+.daily-prompt-actions button{
+  width:28px;height:28px;border:1px solid rgba(17,17,17,.12);border-radius:50%;
+  background:rgba(255,255,255,.62);display:grid;place-items:center;padding:0;font-size:11px
+}
+.daily-prompt-composer{margin-top:10px;padding-top:10px;border-top:1px solid rgba(17,17,17,.10)}
+.prompt-panel .daily-prompt-composer textarea{
+  min-height:92px;margin-top:0;padding:11px 12px;border:1px solid rgba(17,17,17,.12);
+  border-radius:14px;background:rgba(255,255,255,.42)
+}
+.add-daily-prompt-btn{margin-left:auto;min-height:34px;padding:6px 12px;font-size:11px}
+.calendar-prompt-count{margin-left:auto;color:#806d42;font-size:9px;font-weight:700}
+.calendar-prompts-list{display:grid;gap:7px;margin-top:8px}
+.calendar-prompt-item{
+  display:grid;grid-template-columns:22px minmax(0,1fr) 28px;gap:7px;align-items:start;
+  padding:8px;border-radius:11px;background:rgba(255,255,255,.42);
+  border:1px solid rgba(17,17,17,.08)
+}
+.calendar-prompt-index{
+  width:22px;height:22px;display:grid;place-items:center;border-radius:50%;
+  background:rgba(17,17,17,.86);color:#fff;font-size:8px;font-weight:800
+}
+.calendar-prompt-item p{
+  margin:1px 0 0!important;display:-webkit-box;-webkit-line-clamp:4;
+  -webkit-box-orient:vertical;overflow:hidden;font-size:10px!important;line-height:1.4!important
+}
+.calendar-prompt-item .calendar-drag-handle{margin-left:0}
+@media(max-width:480px){
+  .daily-prompt-card{grid-template-columns:26px minmax(0,1fr)}
+  .daily-prompt-number{width:26px;height:26px}
+  .daily-prompt-actions{grid-column:2;justify-content:flex-end}
+  .prompt-panel .daily-prompt-composer textarea{min-height:110px;font-size:16px}
+  .add-daily-prompt-btn{width:100%;margin-left:0}
+}
