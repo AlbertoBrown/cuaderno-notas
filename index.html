@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="apple-touch-icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=30" />
+  <link rel="stylesheet" href="styles.css?v=31" />
 </head>
 <body>
   <div class="app-shell">
@@ -119,14 +119,24 @@
 
             <section class="prompt-panel">
               <div class="panel-title">
-                <div><span class="icon-badge">💡</span><strong>Prompt del día</strong></div>
-                <button id="copyPromptBtn" class="icon-btn" title="Copiar prompt">⧉</button>
+                <div>
+                  <span class="icon-badge">💡</span>
+                  <strong>Prompts del día</strong>
+                  <span id="dailyPromptCount" class="daily-prompt-count">0</span>
+                </div>
+                <button id="copyPromptBtn" class="icon-btn" title="Copiar todos los prompts">⧉</button>
               </div>
-              <textarea id="promptInput" placeholder="Escribe aquí qué quieres analizar, comprobar o investigar hoy..."></textarea>
-              <div class="prompt-actions">
-                <button class="mini-chip" data-prompt="Analiza los errores de hoy y detecta patrones que se repiten.">Analizar errores</button>
-                <button class="mini-chip" data-prompt="Compara las incidencias de hoy con los últimos días y señala diferencias relevantes.">Comparar días</button>
-                <button class="mini-chip" data-prompt="Resume los apuntes de hoy en causas, comprobaciones y acciones pendientes.">Generar resumen</button>
+
+              <div id="dailyPromptsList" class="daily-prompts-list"></div>
+
+              <div class="daily-prompt-composer">
+                <textarea id="promptInput" placeholder="Escribe otro prompt para este día..."></textarea>
+                <div class="prompt-actions">
+                  <button class="mini-chip" data-prompt="Analiza los errores de hoy y detecta patrones que se repiten.">Analizar errores</button>
+                  <button class="mini-chip" data-prompt="Compara las incidencias de hoy con los últimos días y señala diferencias relevantes.">Comparar días</button>
+                  <button class="mini-chip" data-prompt="Resume los apuntes de hoy en causas, comprobaciones y acciones pendientes.">Generar resumen</button>
+                  <button id="addDailyPromptBtn" class="primary-btn add-daily-prompt-btn" type="button">+ Añadir prompt</button>
+                </div>
               </div>
             </section>
 
@@ -217,14 +227,13 @@
               <div><span class="calendar-mini purple">!</span><strong id="calendarDayIncidents">0</strong><small>Incidencias</small></div>
             </div>
 
-            <section id="calendarPromptCard" class="calendar-detail-box prompt">
+            <section class="calendar-detail-box prompt">
               <div class="calendar-detail-title">
                 <span>💡</span>
-                <strong>Prompt del día</strong>
-                <span id="calendarPromptDragHandle" class="calendar-drag-handle" role="button" tabindex="0" title="Arrastrar este prompt a otro día" aria-label="Arrastrar prompt a otra fecha">⠿</span>
+                <strong>Prompts del día</strong>
+                <span id="calendarPromptCount" class="calendar-prompt-count"></span>
               </div>
-              <p id="calendarDayPrompt">Sin prompt para este día.</p>
-              <small id="calendarPromptDragHint" class="calendar-drag-hint">Arrastra ⠿ a otra fecha o tócalo para elegirla.</small>
+              <div id="calendarPromptsList" class="calendar-prompts-list"></div>
             </section>
 
             <section class="calendar-detail-box">
@@ -464,6 +473,6 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="js/app.js?v=30"></script>
+  <script type="module" src="js/app.js?v=31"></script>
 </body>
 </html>
