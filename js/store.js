@@ -125,6 +125,7 @@ export function ensureDay(fecha) {
     state.days.set(fecha, {
       fecha,
       prompt: "",
+      prompts: [],
       apuntes: "",
       conclusiones: "",
       tareas: [],
@@ -188,9 +189,13 @@ export async function migrateLegacyLocalStorage() {
 
   if (legacy && typeof legacy === "object") {
     for (const [fecha, day] of Object.entries(legacy)) {
+      const legacyPrompt = String(day.prompt || "").trim();
       const dayRow = {
         fecha,
-        prompt: day.prompt || "",
+        prompt: "",
+        prompts: legacyPrompt
+          ? [{ id: crypto.randomUUID(), text: legacyPrompt, createdAt: nowIso() }]
+          : [],
         apuntes: day.notesHtml || day.apuntes || "",
         conclusiones: day.conclusions || day.conclusiones || "",
         tareas: Array.isArray(day.tasks) ? day.tasks : Array.isArray(day.tareas) ? day.tareas : [],
