@@ -654,6 +654,155 @@ function stripHtml(value = "") {
   return (node.textContent || node.innerText || "").trim();
 }
 
+function formatCalendarDropDate(fecha) {
+  return formatDate(fromKey(fecha), { day: "numeric", month: "short" });
+}
+
+function cleanupCalendarDragUI() {
+  document.body.classList.remove("calendar-dragging");
+  document.querySelectorAll(".calendar-day-cell.drop-target").forEach(node => node.classList.remove("drop-target"));
+  document.querySelectorAll(".calendar-drag-source-active").forEach(node => node.classList.remove("calendar-drag-source-active"));
+  document.querySelectorAll(".calendar-drag-ghost").forEach(node => node.remove());
+}
+
+async function dropCalendarItem(payload, targetDate) {
+  if (!payload || !targetDate) return;
+
+  if (payload.kind === "note") {
+    const note = state.notes.get(payload.noteId);
+    if (!note || note.deleted || note.fecha === targetDate) return;
+
+    await putNote({
+      ...note,
+      fecha: targetDate,
+      updatedAt: nowIso(),
+      syncStatus: "pending",
+      syncError: null,
+    });
+
+    state.selectedDate = targetDate;
+    setCalendarMonthFromDate(targetDate);
+    calendarDetailExpanded = false;
+    renderCalendarView();
+    syncSoon();
+    toast(`Nota movida al ${formatCalendarDropDate(targetDate)}`, "success");
+    return;
+  }
+
+  if (payload.kind === "prompt") {
+    if (!payload.prompt || payload.sourceDate === targetDate) return;
+
+    const target = ensureDay(targetDate);
+    if (target.prompt && target.prompt !== payload.prompt) {
+      const replace = confirm(
+        `El ${formatCalendarDropDate(targetDate)} ya tiene un prompt. ¿Quieres sustituirlo?`,
+      );
+      if (!replace) return;
+    }
+
+    const next = markDayPending(targetDate, { prompt: payload.prompt });
+    await putDay(next);
+
+    state.selectedDate = targetDate;
+    setCalendarMonthFromDate(targetDate);
+    calendarDetailExpanded = false;
+    renderCalendarView();
+    scheduleDayPush(targetDate);
+    toast(`Prompt copiado al ${formatCalendarDropDate(targetDate)}`, "success");
+  }
+}
+
+function attachCalendarDragHandle(handle, payload, label, sourceNode = null) {
+  if (!handle) return;
+
+  handle.onpointerdown = event => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const pointerId = event.pointerId;
+    let dragging = false;
+    let ghost = null;
+    let targetCell = null;
+
+    const setTarget = next => {
+      if (targetCell === next) return;
+      targetCell?.classList.remove("drop-target");
+      targetCell = next;
+      targetCell?.classList.add("drop-target");
+    };
+
+    const begin = () => {
+      if (dragging) return;
+      dragging = true;
+      document.body.classList.add("calendar-dragging");
+      sourceNode?.classList.add("calendar-drag-source-active");
+
+      ghost = document.createElement("div");
+      ghost.className = "calendar-drag-ghost";
+      ghost.innerHTML = `<span>⠿</span><strong>${escapeHtml(label)}</strong><small>Suelta sobre una fecha</small>`;
+      document.body.appendChild(ghost);
+    };
+
+    const moveGhost = (x, y) => {
+      if (!ghost) return;
+      ghost.style.transform = `translate3d(${Math.min(window.innerWidth - 190, Math.max(8, x + 14))}px,${Math.min(window.innerHeight - 74, Math.max(8, y + 14))}px,0)`;
+    };
+
+    const onMove = eventMove => {
+      const distance = Math.hypot(eventMove.clientX - startX, eventMove.clientY - startY);
+      if (!dragging && distance < 7) return;
+      begin();
+      eventMove.preventDefault();
+      moveGhost(eventMove.clientX, eventMove.clientY);
+
+      if (eventMove.clientY < 84) window.scrollBy(0, -18);
+      else if (eventMove.clientY > window.innerHeight - 84) window.scrollBy(0, 18);
+
+      const underPointer = document.elementFromPoint(eventMove.clientX, eventMove.clientY);
+      setTarget(underPointer?.closest?.(".calendar-day-cell") || null);
+    };
+
+    const finish = async eventEnd => {
+      window.removeEventListener("pointermove", onMove, { passive: false });
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+
+      const targetDate = dragging ? targetCell?.dataset?.date : null;
+      cleanupCalendarDragUI();
+
+      try {
+        handle.releasePointerCapture?.(pointerId);
+      } catch {}
+
+      if (targetDate) {
+        await dropCalendarItem(payload, targetDate);
+      } else if (dragging) {
+        toast("Suelta sobre un día del calendario", "neutral");
+      }
+
+      eventEnd?.preventDefault?.();
+    };
+
+    try {
+      handle.setPointerCapture?.(pointerId);
+    } catch {}
+
+    window.addEventListener("pointermove", onMove, { passive: false });
+    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", finish, { once: true });
+  };
+
+  handle.onkeydown = event => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toast("Mantén pulsado y arrastra el elemento hasta otra fecha", "neutral");
+    }
+  };
+}
+
 function calendarDaySummary(fecha) {
   const day = state.days.get(fecha) || { prompt: "", apuntes: "", conclusiones: "", tareas: [] };
   const notes = notesForDate(fecha).filter(note => note.tipo !== "visual");
@@ -704,6 +853,19 @@ function renderCalendarDetail() {
   el("calendarDayPrompt").textContent = summary.day.prompt || "Sin prompt para este día.";
   el("calendarDayConclusion").textContent = summary.day.conclusiones || "Sin conclusiones todavía.";
 
+  const promptHandle = el("calendarPromptDragHandle");
+  const promptHint = el("calendarPromptDragHint");
+  promptHandle.hidden = !summary.day.prompt;
+  promptHint.hidden = !summary.day.prompt;
+  if (summary.day.prompt) {
+    attachCalendarDragHandle(
+      promptHandle,
+      { kind: "prompt", sourceDate: state.selectedDate, prompt: summary.day.prompt },
+      "Prompt del día",
+      el("calendarPromptCard"),
+    );
+  }
+
   const tasks = el("calendarTasksList");
   tasks.replaceChildren();
   el("calendarTasksCount").textContent = summary.pending.length ? `(${summary.pending.length})` : "";
@@ -734,9 +896,20 @@ function renderCalendarDetail() {
         <span class="calendar-note-type">${escapeHtml(meta.label)}</span>
         <strong>${escapeHtml(note.titulo || "Sin título")}</strong>
         <small>${escapeHtml(content.apuntes || content.prompt || "Sin detalle.")}</small>
+        <span class="calendar-note-drag" role="button" tabindex="0" title="Arrastrar a otra fecha" aria-label="Arrastrar nota a otra fecha">⠿</span>
         <span class="calendar-note-arrow">→</span>
       `;
-      card.onclick = () => openNormalNoteEditor(note);
+      const dragHandle = card.querySelector(".calendar-note-drag");
+      attachCalendarDragHandle(
+        dragHandle,
+        { kind: "note", noteId: note.id },
+        note.titulo || "Nota",
+        card,
+      );
+      card.onclick = event => {
+        if (event.target.closest(".calendar-note-drag")) return;
+        openNormalNoteEditor(note);
+      };
       preview.appendChild(card);
     });
   }
@@ -790,6 +963,7 @@ function renderCalendarView() {
     const cell = document.createElement("button");
     cell.type = "button";
     cell.className = "calendar-day-cell";
+    cell.dataset.date = key;
     if (date.getMonth() !== month) cell.classList.add("outside");
     if (key === state.selectedDate) cell.classList.add("selected");
     if (key === toKey(new Date())) cell.classList.add("today");
