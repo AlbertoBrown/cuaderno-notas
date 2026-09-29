@@ -22,10 +22,39 @@ let realtimeChannel = null;
 let realtimeRefreshTimer = null;
 let syncing = false;
 
+function parseRemoteDayPrompts(value, fecha, fallbackDate) {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed?.version === 2 && Array.isArray(parsed.items)) {
+      return parsed.items
+        .map(item => ({
+          id: String(item?.id || crypto.randomUUID()),
+          text: String(item?.text || "").trim(),
+          createdAt: item?.createdAt || fallbackDate || nowIso(),
+        }))
+        .filter(item => item.text);
+    }
+  } catch {}
+
+  return [{
+    id: `legacy-${fecha}`,
+    text: raw,
+    createdAt: fallbackDate || nowIso(),
+  }];
+}
+
 function remoteDayToLocal(row) {
   return {
     fecha: row.fecha,
-    prompt: row.prompt || "",
+    prompt: "",
+    prompts: parseRemoteDayPrompts(
+      row.prompt,
+      row.fecha,
+      row.updated_at || row.created_at || nowIso(),
+    ),
     apuntes: row.apuntes || "",
     conclusiones: row.conclusiones || "",
     tareas: Array.isArray(row.tareas) ? row.tareas : [],
