@@ -45,11 +45,32 @@ export function detectVisualColumns() {
   return visualColumnsPromise;
 }
 
+function serializeDayPromptItems(day) {
+  let items = Array.isArray(day.prompts) ? day.prompts : [];
+  if (!items.length && typeof day.prompt === "string" && day.prompt.trim()) {
+    items = [{
+      id: `legacy-${day.fecha}`,
+      text: day.prompt.trim(),
+      createdAt: day.updatedAt || new Date().toISOString(),
+    }];
+  }
+
+  const safeItems = items
+    .map(item => ({
+      id: String(item?.id || crypto.randomUUID()),
+      text: String(item?.text || "").trim(),
+      createdAt: item?.createdAt || new Date().toISOString(),
+    }))
+    .filter(item => item.text);
+
+  return JSON.stringify({ version: 2, items: safeItems });
+}
+
 export function buildDayRow(day, userId) {
   return {
     user_id: userId,
     fecha: day.fecha,
-    prompt: day.prompt || "",
+    prompt: serializeDayPromptItems(day),
     apuntes: day.apuntes || "",
     conclusiones: day.conclusiones || "",
     tareas: Array.isArray(day.tareas) ? day.tareas : [],
