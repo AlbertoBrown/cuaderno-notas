@@ -72,6 +72,7 @@ let visualDraft = {
 let retryPending = () => {};
 let editingVisualId = null;
 let editingNoteId = null;
+let editingDayPromptId = null;
 let editorHomeMarker = null;
 let calendarMonthKey = state.selectedDate.slice(0, 7);
 let calendarDetailExpanded = false;
@@ -124,6 +125,35 @@ function serializeNormalNoteContent(apuntes = "", prompt = "") {
   return JSON.stringify({
     apuntes: String(apuntes || ""),
     prompt: String(prompt || ""),
+  });
+}
+
+function dayPromptItems(day) {
+  if (!day) return [];
+  if (Array.isArray(day.prompts)) {
+    return day.prompts
+      .map(item => ({
+        id: String(item?.id || crypto.randomUUID()),
+        text: String(item?.text || "").trim(),
+        createdAt: item?.createdAt || day.updatedAt || nowIso(),
+      }))
+      .filter(item => item.text);
+  }
+
+  const legacy = String(day.prompt || "").trim();
+  return legacy
+    ? [{
+        id: `legacy-${day.fecha}`,
+        text: legacy,
+        createdAt: day.updatedAt || nowIso(),
+      }]
+    : [];
+}
+
+async function saveDayPrompts(prompts) {
+  await updateDay({
+    prompt: "",
+    prompts: prompts.filter(item => String(item?.text || "").trim()),
   });
 }
 
@@ -291,9 +321,65 @@ function renderDateHeader() {
   }
 }
 
+function renderDailyPrompts() {
+  const day = ensureDay(state.selectedDate);
+  const prompts = dayPromptItems(day);
+  const list = el("dailyPromptsList");
+  const count = el("dailyPromptCount");
+  count.textContent = String(prompts.length);
+  list.replaceChildren();
+
+  if (!prompts.length) {
+    list.innerHTML = '<div class="daily-prompts-empty">Todavía no hay prompts guardados para este día.</div>';
+  } else {
+    prompts.forEach((prompt, index) => {
+      const card = document.createElement("article");
+      card.className = "daily-prompt-card";
+      card.innerHTML = `
+        <div class="daily-prompt-number">${index + 1}</div>
+        <p>${escapeHtml(prompt.text)}</p>
+        <div class="daily-prompt-actions">
+          <button class="copy-day-prompt" type="button" title="Copiar">⧉</button>
+          <button class="edit-day-prompt" type="button" title="Editar">✎</button>
+          <button class="delete-day-prompt" type="button" title="Eliminar">×</button>
+        </div>
+      `;
+
+      card.querySelector(".copy-day-prompt").onclick = async () => {
+        await navigator.clipboard.writeText(prompt.text);
+        toast("Prompt copiado", "success");
+      };
+
+      card.querySelector(".edit-day-prompt").onclick = () => {
+        editingDayPromptId = prompt.id;
+        el("promptInput").value = prompt.text;
+        el("addDailyPromptBtn").textContent = "Guardar cambios";
+        el("promptInput").focus();
+      };
+
+      card.querySelector(".delete-day-prompt").onclick = async () => {
+        if (!confirm("¿Eliminar este prompt?")) return;
+        const next = prompts.filter(item => item.id !== prompt.id);
+        if (editingDayPromptId === prompt.id) {
+          editingDayPromptId = null;
+          el("promptInput").value = "";
+          el("addDailyPromptBtn").textContent = "+ Añadir prompt";
+        }
+        await saveDayPrompts(next);
+        renderDailyPrompts();
+      };
+
+      list.appendChild(card);
+    });
+  }
+}
+
 function renderDay() {
   const day = ensureDay(state.selectedDate);
-  el("promptInput").value = day.prompt || "";
+  editingDayPromptId = null;
+  el("promptInput").value = "";
+  el("addDailyPromptBtn").textContent = "+ Añadir prompt";
+  renderDailyPrompts();
   el("notesEditor").innerHTML = day.apuntes || "";
   el("conclusionsInput").value = day.conclusiones || "";
   renderTasks();
@@ -753,15 +839,17 @@ async function dropCalendarItem(payload, targetDate) {
     }
 
     const target = ensureDay(targetDate);
-    const previousPrompt = target.prompt || "";
-    if (previousPrompt && previousPrompt !== payload.prompt) {
-      const replace = confirm(
-        `El ${formatCalendarDropDate(targetDate)} ya tiene un prompt. ¿Quieres sustituirlo?`,
-      );
-      if (!replace) return;
-    }
+    const targetPrompts = dayPromptItems(target);
+    const copied = {
+      id: crypto.randomUUID(),
+      text: payload.prompt,
+      createdAt: nowIso(),
+    };
 
-    const next = markDayPending(targetDate, { prompt: payload.prompt });
+    const next = markDayPending(targetDate, {
+      prompt: "",
+      prompts: [...targetPrompts, copied],
+    });
     await putDay(next);
 
     state.selectedDate = targetDate;
@@ -770,10 +858,14 @@ async function dropCalendarItem(payload, targetDate) {
     renderCalendarView();
     scheduleDayPush(targetDate);
 
-    toast(`Prompt copiado al ${formatCalendarDropDate(targetDate)}`, "success", {
+    toast(`Prompt añadido al ${formatCalendarDropDate(targetDate)}`, "success", {
       label: "Deshacer",
       onClick: async () => {
-        const restored = markDayPending(targetDate, { prompt: previousPrompt });
+        const current = ensureDay(targetDate);
+        const restored = markDayPending(targetDate, {
+          prompt: "",
+          prompts: dayPromptItems(current).filter(item => item.id !== copied.id),
+        });
         await putDay(restored);
         renderCalendarView();
         scheduleDayPush(targetDate);
@@ -884,7 +976,8 @@ function calendarDaySummary(fecha) {
   return {
     day,
     notes,
-    prompts: (day.prompt ? 1 : 0) + notePrompts,
+    dayPrompts: dayPromptItems(day),
+    prompts: dayPromptItems(day).length + notePrompts,
     pending: (day.tareas || []).filter(task => !task.done),
     incidents: notes.filter(note => note.tipo === "incident" || note.tipo === "error"),
   };
@@ -922,20 +1015,38 @@ function renderCalendarDetail() {
   el("calendarDayPrompts").textContent = String(summary.prompts);
   el("calendarDayPending").textContent = String(summary.pending.length);
   el("calendarDayIncidents").textContent = String(summary.incidents.length);
-  el("calendarDayPrompt").textContent = summary.day.prompt || "Sin prompt para este día.";
   el("calendarDayConclusion").textContent = summary.day.conclusiones || "Sin conclusiones todavía.";
 
-  const promptHandle = el("calendarPromptDragHandle");
-  const promptHint = el("calendarPromptDragHint");
-  promptHandle.hidden = !summary.day.prompt;
-  promptHint.hidden = !summary.day.prompt;
-  if (summary.day.prompt) {
-    attachCalendarDragHandle(
-      promptHandle,
-      { kind: "prompt", sourceDate: state.selectedDate, prompt: summary.day.prompt },
-      "Prompt del día",
-      el("calendarPromptCard"),
-    );
+  const calendarPrompts = el("calendarPromptsList");
+  calendarPrompts.replaceChildren();
+  el("calendarPromptCount").textContent = summary.dayPrompts.length
+    ? `(${summary.dayPrompts.length})`
+    : "";
+
+  if (!summary.dayPrompts.length) {
+    calendarPrompts.innerHTML = '<div class="calendar-empty-mini">Sin prompts para este día.</div>';
+  } else {
+    summary.dayPrompts.forEach((prompt, index) => {
+      const row = document.createElement("article");
+      row.className = "calendar-prompt-item";
+      row.innerHTML = `
+        <div class="calendar-prompt-index">${index + 1}</div>
+        <p>${escapeHtml(prompt.text)}</p>
+        <span class="calendar-drag-handle" role="button" tabindex="0" title="Arrastrar o tocar para elegir otra fecha" aria-label="Copiar prompt a otra fecha">⠿</span>
+      `;
+      attachCalendarDragHandle(
+        row.querySelector(".calendar-drag-handle"),
+        {
+          kind: "prompt",
+          sourceDate: state.selectedDate,
+          promptId: prompt.id,
+          prompt: prompt.text,
+        },
+        `Prompt ${index + 1}`,
+        row,
+      );
+      calendarPrompts.appendChild(row);
+    });
   }
 
   const tasks = el("calendarTasksList");
@@ -1010,7 +1121,7 @@ function renderCalendarView() {
   let monthPending = 0;
   for (const [fecha, day] of state.days.entries()) {
     if (!fecha.startsWith(monthPrefix)) continue;
-    if (day.prompt) monthPrompts += 1;
+    monthPrompts += dayPromptItems(day).length;
     monthPending += (day.tareas || []).filter(task => !task.done).length;
   }
   for (const note of monthNotes) {
@@ -1549,7 +1660,41 @@ function bindEvents() {
     editingNoteId = null;
   });
 
-  el("promptInput").addEventListener("input", event => updateDay({ prompt: event.target.value }));
+  el("addDailyPromptBtn").onclick = async () => {
+    const input = el("promptInput");
+    const text = input.value.trim();
+    if (!text) {
+      input.focus();
+      toast("Escribe un prompt", "neutral");
+      return;
+    }
+
+    const day = ensureDay(state.selectedDate);
+    const prompts = dayPromptItems(day);
+    let next;
+
+    if (editingDayPromptId) {
+      next = prompts.map(item =>
+        item.id === editingDayPromptId
+          ? { ...item, text, updatedAt: nowIso() }
+          : item,
+      );
+      editingDayPromptId = null;
+      toast("Prompt actualizado", "success");
+    } else {
+      next = [
+        ...prompts,
+        { id: crypto.randomUUID(), text, createdAt: nowIso() },
+      ];
+      toast("Prompt añadido", "success");
+    }
+
+    input.value = "";
+    el("addDailyPromptBtn").textContent = "+ Añadir prompt";
+    await saveDayPrompts(next);
+    renderDailyPrompts();
+  };
+
   el("notesEditor").addEventListener("input", event => updateDay({ apuntes: event.target.innerHTML }));
   el("conclusionsInput").addEventListener("input", event => updateDay({ conclusiones: event.target.value }));
 
@@ -1572,13 +1717,23 @@ function bindEvents() {
       const current = el("promptInput").value.trim();
       const next = current ? `${current}\n\n${button.dataset.prompt}` : button.dataset.prompt;
       el("promptInput").value = next;
-      updateDay({ prompt: next });
+      el("promptInput").focus();
     };
   });
 
   el("copyPromptBtn").onclick = async () => {
-    await navigator.clipboard.writeText(el("promptInput").value);
-    toast("Prompt copiado", "success");
+    const prompts = dayPromptItems(ensureDay(state.selectedDate));
+    const text = prompts.length
+      ? prompts.map((item, index) => `${index + 1}. ${item.text}`).join("\n\n")
+      : el("promptInput").value.trim();
+
+    if (!text) {
+      toast("No hay prompts para copiar", "neutral");
+      return;
+    }
+
+    await navigator.clipboard.writeText(text);
+    toast(prompts.length > 1 ? "Prompts copiados" : "Prompt copiado", "success");
   };
 
   document.querySelectorAll(".filter-chip").forEach(button => {
