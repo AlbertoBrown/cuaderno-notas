@@ -481,9 +481,10 @@ export function startRealtime(onChange) {
   stopRealtime();
   if (!state.user) return;
 
-  realtimeChannel = supabaseClient
-    .channel(`cuaderno-${state.user.id}`)
-    .on(
+  let channel = supabaseClient.channel(`cuaderno-${state.user.id}`);
+
+  if (state.notebookSchemaReady !== false) {
+    channel = channel.on(
       "postgres_changes",
       {
         event: "*",
@@ -492,7 +493,10 @@ export function startRealtime(onChange) {
         filter: `user_id=eq.${state.user.id}`,
       },
       () => scheduleRealtimeRefresh(onChange),
-    )
+    );
+  }
+
+  realtimeChannel = channel
     .on(
       "postgres_changes",
       {
