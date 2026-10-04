@@ -145,6 +145,7 @@ export const state = {
   notebooks: new Map(),
   currentNotebookId: DEFAULT_NOTEBOOK_ID,
   showingNotebooks: false,
+  notebookSchemaReady: null,
   days: new Map(),
   notes: new Map(),
   syncStatus: "local",
