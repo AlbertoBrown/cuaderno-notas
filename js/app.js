@@ -4,8 +4,13 @@ import {
   loadCache,
   migrateLegacyLocalStorage,
   ensureDay,
+  dayForDate,
   notesForDate,
   allVisualNotes,
+  currentNotebook,
+  notebooksList,
+  putNotebook,
+  setCurrentNotebook,
   putDay,
   putNote,
   markDayPending,
@@ -76,6 +81,7 @@ let editingDayPromptId = null;
 let editorHomeMarker = null;
 let calendarMonthKey = state.selectedDate.slice(0, 7);
 let calendarDetailExpanded = false;
+let selectedNotebookColor = "sand";
 
 function toKey(date) {
   const y = date.getFullYear();
@@ -101,6 +107,180 @@ function escapeHtml(value = "") {
     '"': "&quot;",
     "'": "&#039;",
   })[char]);
+}
+
+function notesInCurrentNotebook() {
+  return [...state.notes.values()].filter(note =>
+    note.notebookId === state.currentNotebookId && !note.deleted
+  );
+}
+
+function daysInCurrentNotebook() {
+  return [...state.days.values()].filter(day =>
+    day.notebookId === state.currentNotebookId
+  );
+}
+
+function notebookActivity(notebookId) {
+  let latest = 0;
+  for (const day of state.days.values()) {
+    if (day.notebookId !== notebookId) continue;
+    latest = Math.max(latest, Date.parse(day.updatedAt || 0) || 0);
+  }
+  for (const note of state.notes.values()) {
+    if (note.notebookId !== notebookId || note.deleted) continue;
+    latest = Math.max(latest, Date.parse(note.updatedAt || note.createdAt || 0) || 0);
+  }
+  return latest;
+}
+
+function notebookSlug(name) {
+  const base = String(name || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "cuaderno";
+
+  if (!state.notebooks.has(base)) return base;
+  return `${base}-${crypto.randomUUID().slice(0, 6)}`;
+}
+
+function renderNotebookChrome() {
+  const notebook = currentNotebook();
+  const label = el("notebookNameLabel");
+  const back = el("notebookBackBtn");
+  const search = el("searchInput")?.closest(".search-box");
+  const today = el("todayBtn");
+
+  document.body.classList.toggle("notebook-picker-open", state.showingNotebooks);
+
+  if (label) {
+    label.textContent = state.showingNotebooks
+      ? "Cuaderno"
+      : (notebook?.nombre || "Cuaderno");
+  }
+  if (back) back.hidden = state.showingNotebooks;
+  if (search) search.hidden = state.showingNotebooks;
+  if (today) today.hidden = state.showingNotebooks;
+
+  if (state.showingNotebooks) {
+    el("pageTitle").innerHTML = "Mis cuadernos<span>.</span>";
+  }
+}
+
+function renderNotebooksView() {
+  const view = el("notebooksView");
+  const grid = el("notebooksGrid");
+  if (!view || !grid) return;
+
+  view.hidden = !state.showingNotebooks;
+  if (!state.showingNotebooks) return;
+
+  grid.replaceChildren();
+
+  for (const notebook of notebooksList()) {
+    const notes = [...state.notes.values()].filter(note =>
+      note.notebookId === notebook.id && !note.deleted
+    ).length;
+    const days = [...state.days.values()].filter(day =>
+      day.notebookId === notebook.id &&
+      (
+        day.apuntes ||
+        day.conclusiones ||
+        (day.prompts || []).length ||
+        (day.tareas || []).length
+      )
+    ).length;
+    const activity = notebookActivity(notebook.id);
+    const activityText = activity
+      ? formatDate(new Date(activity), { day: "2-digit", month: "short" })
+      : "Sin actividad";
+
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "notebook-card";
+    card.dataset.notebookId = notebook.id;
+    card.dataset.color = notebook.color || "sand";
+    card.innerHTML = `
+      <div class="notebook-card-top">
+        <span class="notebook-card-icon">${escapeHtml(notebook.icono || "▤")}</span>
+        <span class="notebook-card-arrow">↗</span>
+      </div>
+      <div class="notebook-card-body">
+        <h3>${escapeHtml(notebook.nombre)}</h3>
+        <p>${notebook.isDefault ? "Cuaderno principal" : "Espacio independiente"}</p>
+      </div>
+      <div class="notebook-card-meta">
+        <span>${notes} nota${notes === 1 ? "" : "s"}</span>
+        <span>${days} día${days === 1 ? "" : "s"}</span>
+        <span>${activityText}</span>
+      </div>
+    `;
+    card.onclick = () => openNotebook(notebook.id);
+    grid.appendChild(card);
+  }
+
+  const notice = el("notebookCloudNotice");
+  if (notice) {
+    notice.hidden = state.notebookSchemaReady !== false;
+  }
+}
+
+async function openNotebook(id) {
+  const changed = await setCurrentNotebook(id);
+  if (!changed) return;
+
+  state.showingNotebooks = false;
+  state.currentFilter = "all";
+  state.searchTerm = "";
+  state.selectedDate = toKey(new Date());
+  ensureDay(state.selectedDate);
+
+  if (el("searchInput")) el("searchInput").value = "";
+  setVisualEditUI?.(null);
+  showView("today");
+  renderAll();
+}
+
+function openNotebookPicker() {
+  state.showingNotebooks = true;
+  renderAll();
+}
+
+async function createNotebook() {
+  const input = el("notebookNameInput");
+  const name = input?.value.trim();
+  if (!name) {
+    input?.focus();
+    return;
+  }
+
+  const now = nowIso();
+  const notebook = {
+    id: notebookSlug(name),
+    nombre: name,
+    icono: "▤",
+    color: selectedNotebookColor,
+    isDefault: false,
+    createdAt: now,
+    updatedAt: now,
+    syncStatus: "pending",
+    syncError: null,
+  };
+
+  await putNotebook(notebook);
+  el("notebookDialog")?.close();
+  if (input) input.value = "";
+  selectedNotebookColor = "sand";
+  document.querySelectorAll(".notebook-color-option").forEach(button => {
+    button.classList.toggle("active", button.dataset.notebookColor === "sand");
+  });
+
+  renderNotebooksView();
+  syncSoon();
+  toast("Cuaderno creado", "success");
 }
 
 function parseNormalNoteContent(value = "") {
@@ -239,6 +419,10 @@ function setCloudUI() {
     box.dataset.state = "error";
     box.querySelector("strong").textContent = "Sin conexión";
     box.querySelector("small").textContent = "Los cambios quedan pendientes";
+  } else if (state.notebookSchemaReady === false && !currentNotebook()?.isDefault) {
+    box.dataset.state = "local";
+    box.querySelector("strong").textContent = "Solo en este dispositivo";
+    box.querySelector("small").textContent = "Pendiente de activar cuadernos en Supabase";
   } else if (state.syncStatus === "syncing") {
     box.dataset.state = "sync";
     box.querySelector("strong").textContent = "Sincronizando";
@@ -262,7 +446,7 @@ function setCloudUI() {
 
   const saveStatus = el("saveStatus");
   if (saveStatus) {
-    const day = state.days.get(state.selectedDate);
+    const day = dayForDate(state.selectedDate);
     saveStatus.textContent = day ? syncLabel(day.syncStatus) : "Guardado";
   }
 }
@@ -305,7 +489,7 @@ function renderDateHeader() {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     const key = toKey(d);
-    const count = [...state.notes.values()].filter(note => note.fecha === key && !note.deleted).length;
+    const count = notesInCurrentNotebook().filter(note => note.fecha === key).length;
     const button = document.createElement("button");
     button.className = `week-day${key === state.selectedDate ? " active" : ""}`;
     button.innerHTML = `
@@ -397,8 +581,8 @@ function renderNotes() {
   let notes = [];
 
   if (state.searchTerm) {
-    notes = [...state.notes.values()].filter(note => {
-      if (note.tipo === "visual" || note.deleted) return false;
+    notes = notesInCurrentNotebook().filter(note => {
+      if (note.tipo === "visual") return false;
       const content = parseNormalNoteContent(note.contenido);
       const haystack = `${note.titulo} ${content.apuntes} ${content.prompt} ${note.etiqueta} ${note.fecha}`.toLowerCase();
       return haystack.includes(state.searchTerm);
@@ -968,7 +1152,7 @@ function attachCalendarDragHandle(handle, payload, label, sourceNode = null) {
 }
 
 function calendarDaySummary(fecha) {
-  const day = state.days.get(fecha) || { prompt: "", apuntes: "", conclusiones: "", tareas: [] };
+  const day = dayForDate(fecha) || { prompt: "", apuntes: "", conclusiones: "", tareas: [] };
   const notes = notesForDate(fecha).filter(note => note.tipo !== "visual");
   const notePrompts = notes.reduce((total, note) => {
     return total + (parseNormalNoteContent(note.contenido).prompt ? 1 : 0);
@@ -1113,13 +1297,14 @@ function renderCalendarView() {
   el("calendarPageTitle").innerHTML = `${pretty}<span>.</span>`;
   el("calendarMonthLabel").textContent = pretty;
 
-  const monthNotes = [...state.notes.values()].filter(note =>
-    !note.deleted && note.tipo !== "visual" && String(note.fecha || "").startsWith(monthPrefix)
+  const monthNotes = notesInCurrentNotebook().filter(note =>
+    note.tipo !== "visual" && String(note.fecha || "").startsWith(monthPrefix)
   );
 
   let monthPrompts = 0;
   let monthPending = 0;
-  for (const [fecha, day] of state.days.entries()) {
+  for (const day of daysInCurrentNotebook()) {
+    const fecha = day.fecha;
     if (!fecha.startsWith(monthPrefix)) continue;
     monthPrompts += dayPromptItems(day).length;
     monthPending += (day.tareas || []).filter(task => !task.done).length;
@@ -1172,6 +1357,7 @@ function renderCalendarView() {
 }
 
 function showView(view) {
+  state.showingNotebooks = false;
   state.currentView = view;
   const visual = view === "visual";
   const calendar = view === "calendar";
@@ -1190,6 +1376,17 @@ function showView(view) {
 }
 
 function renderAll() {
+  renderNotebookChrome();
+
+  if (state.showingNotebooks) {
+    el("notebooksView").hidden = false;
+    renderNotebooksView();
+    setCloudUI();
+    return;
+  }
+
+  el("notebooksView").hidden = true;
+
   if (state.currentView === "calendar") {
     renderCalendarView();
   } else {
@@ -1240,7 +1437,8 @@ function syncSoon() {
       });
     }
     setCloudUI();
-    if (state.currentView === "visual") renderVisualNotes();
+    if (state.showingNotebooks) renderNotebooksView();
+    else if (state.currentView === "visual") renderVisualNotes();
     else if (state.currentView === "calendar") renderCalendarView();
     else renderNotes();
   });
@@ -1427,6 +1625,7 @@ async function saveVisualNote() {
       note = markNotePending(
         {
           id: crypto.randomUUID(),
+          notebookId: state.currentNotebookId,
           fecha: state.selectedDate,
           tipo: "visual",
           titulo: title,
@@ -1525,6 +1724,7 @@ async function addNormalNote() {
   const note = {
     ...(existing || {}),
     id: existing?.id || crypto.randomUUID(),
+    notebookId: existing?.notebookId || state.currentNotebookId,
     fecha: existing?.fecha || state.selectedDate,
     tipo: el("noteType").value,
     titulo: title,
@@ -1550,6 +1750,32 @@ async function addNormalNote() {
 }
 
 function bindEvents() {
+  el("notebookBackBtn").onclick = openNotebookPicker;
+  el("newNotebookBtn").onclick = () => {
+    selectedNotebookColor = "sand";
+    document.querySelectorAll(".notebook-color-option").forEach(button => {
+      button.classList.toggle("active", button.dataset.notebookColor === "sand");
+    });
+    el("notebookNameInput").value = "";
+    el("notebookDialog").showModal();
+    setTimeout(() => el("notebookNameInput").focus(), 40);
+  };
+  el("createNotebookBtn").onclick = createNotebook;
+  el("notebookNameInput").addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      createNotebook();
+    }
+  });
+  document.querySelectorAll(".notebook-color-option").forEach(button => {
+    button.onclick = () => {
+      selectedNotebookColor = button.dataset.notebookColor || "sand";
+      document.querySelectorAll(".notebook-color-option").forEach(item => {
+        item.classList.toggle("active", item === button);
+      });
+    };
+  });
+
   el("prevDay").onclick = () => {
     const date = fromKey(state.selectedDate);
     date.setDate(date.getDate() - 1);
@@ -1874,6 +2100,7 @@ function bindEvents() {
   document.querySelectorAll(".nav-item").forEach(button => {
     button.onclick = () => {
       const view = button.dataset.view;
+      state.showingNotebooks = false;
       showView(view);
       if (view === "today") {
         state.selectedDate = toKey(new Date());
@@ -1891,7 +2118,9 @@ function bindEvents() {
 
   el("exportBtn").onclick = () => {
     const payload = {
-      version: 2,
+      version: 3,
+      notebooks: notebooksList(),
+      currentNotebookId: state.currentNotebookId,
       days: [...state.days.values()],
       notes: [...state.notes.values()].map(({ pendingBlob, ...note }) => note),
     };
@@ -1910,6 +2139,11 @@ function bindEvents() {
     try {
       const parsed = JSON.parse(await file.text());
       if (Array.isArray(parsed.days) && Array.isArray(parsed.notes)) {
+        if (Array.isArray(parsed.notebooks)) {
+          for (const notebook of parsed.notebooks) {
+            await putNotebook({ ...notebook, syncStatus: "pending" });
+          }
+        }
         for (const day of parsed.days) await putDay({ ...day, syncStatus: "pending" });
         for (const note of parsed.notes) await putNote({ ...note, syncStatus: "pending" });
       } else {

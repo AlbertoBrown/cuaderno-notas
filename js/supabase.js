@@ -22,6 +22,32 @@ export const supabaseClient = window.supabase.createClient(
 export const VISUAL_BUCKET = "cuaderno-imagenes";
 
 let visualColumnsPromise;
+let notebookSchemaPromise;
+
+export function detectNotebookSchema() {
+  if (!notebookSchemaPromise) {
+    notebookSchemaPromise = Promise.all([
+      supabaseClient.from("cuadernos").select("id").limit(1),
+      supabaseClient.from("cuaderno_dias").select("notebook_id").limit(1),
+      supabaseClient.from("cuaderno_notas").select("notebook_id").limit(1),
+    ]).then(results => {
+      const error = results.find(item => item.error)?.error;
+      if (!error) return true;
+      const message = String(error.message || "").toLowerCase();
+      if (
+        message.includes("cuadernos") ||
+        message.includes("notebook_id") ||
+        message.includes("schema cache") ||
+        message.includes("does not exist") ||
+        message.includes("could not find")
+      ) {
+        return false;
+      }
+      throw error;
+    });
+  }
+  return notebookSchemaPromise;
+}
 
 export function detectVisualColumns() {
   if (!visualColumnsPromise) {
@@ -66,8 +92,21 @@ function serializeDayPromptItems(day) {
   return JSON.stringify({ version: 2, items: safeItems });
 }
 
-export function buildDayRow(day, userId) {
+export function buildNotebookRow(notebook, userId) {
   return {
+    user_id: userId,
+    id: notebook.id,
+    nombre: notebook.nombre || "Nuevo cuaderno",
+    icono: notebook.icono || "▤",
+    color: notebook.color || "sand",
+    is_default: Boolean(notebook.isDefault),
+    created_at: notebook.createdAt || new Date().toISOString(),
+    updated_at: notebook.updatedAt || new Date().toISOString(),
+  };
+}
+
+export function buildDayRow(day, userId, hasNotebookSchema = true) {
+  const row = {
     user_id: userId,
     fecha: day.fecha,
     prompt: serializeDayPromptItems(day),
@@ -76,9 +115,12 @@ export function buildDayRow(day, userId) {
     tareas: Array.isArray(day.tareas) ? day.tareas : [],
     updated_at: day.updatedAt || new Date().toISOString(),
   };
+
+  if (hasNotebookSchema) row.notebook_id = day.notebookId;
+  return row;
 }
 
-export function buildNoteRow(note, userId, hasVisualColumns) {
+export function buildNoteRow(note, userId, hasVisualColumns, hasNotebookSchema = true) {
   const row = {
     id: note.id,
     user_id: userId,
@@ -90,6 +132,8 @@ export function buildNoteRow(note, userId, hasVisualColumns) {
     created_at: note.createdAt || new Date().toISOString(),
     updated_at: note.updatedAt || new Date().toISOString(),
   };
+
+  if (hasNotebookSchema) row.notebook_id = note.notebookId;
 
   if (hasVisualColumns) {
     row.imagen_path = note.imagenPath || null;
