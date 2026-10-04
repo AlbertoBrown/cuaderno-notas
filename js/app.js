@@ -442,7 +442,7 @@ function setCloudUI() {
 
   const saveStatus = el("saveStatus");
   if (saveStatus) {
-    const day = state.days.get(state.selectedDate);
+    const day = dayForDate(state.selectedDate);
     saveStatus.textContent = day ? syncLabel(day.syncStatus) : "Guardado";
   }
 }
@@ -485,7 +485,7 @@ function renderDateHeader() {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     const key = toKey(d);
-    const count = [...state.notes.values()].filter(note => note.fecha === key && !note.deleted).length;
+    const count = notesInCurrentNotebook().filter(note => note.fecha === key).length;
     const button = document.createElement("button");
     button.className = `week-day${key === state.selectedDate ? " active" : ""}`;
     button.innerHTML = `
@@ -577,8 +577,8 @@ function renderNotes() {
   let notes = [];
 
   if (state.searchTerm) {
-    notes = [...state.notes.values()].filter(note => {
-      if (note.tipo === "visual" || note.deleted) return false;
+    notes = notesInCurrentNotebook().filter(note => {
+      if (note.tipo === "visual") return false;
       const content = parseNormalNoteContent(note.contenido);
       const haystack = `${note.titulo} ${content.apuntes} ${content.prompt} ${note.etiqueta} ${note.fecha}`.toLowerCase();
       return haystack.includes(state.searchTerm);
@@ -1148,7 +1148,7 @@ function attachCalendarDragHandle(handle, payload, label, sourceNode = null) {
 }
 
 function calendarDaySummary(fecha) {
-  const day = state.days.get(fecha) || { prompt: "", apuntes: "", conclusiones: "", tareas: [] };
+  const day = dayForDate(fecha) || { prompt: "", apuntes: "", conclusiones: "", tareas: [] };
   const notes = notesForDate(fecha).filter(note => note.tipo !== "visual");
   const notePrompts = notes.reduce((total, note) => {
     return total + (parseNormalNoteContent(note.contenido).prompt ? 1 : 0);
@@ -1293,13 +1293,14 @@ function renderCalendarView() {
   el("calendarPageTitle").innerHTML = `${pretty}<span>.</span>`;
   el("calendarMonthLabel").textContent = pretty;
 
-  const monthNotes = [...state.notes.values()].filter(note =>
-    !note.deleted && note.tipo !== "visual" && String(note.fecha || "").startsWith(monthPrefix)
+  const monthNotes = notesInCurrentNotebook().filter(note =>
+    note.tipo !== "visual" && String(note.fecha || "").startsWith(monthPrefix)
   );
 
   let monthPrompts = 0;
   let monthPending = 0;
-  for (const [fecha, day] of state.days.entries()) {
+  for (const day of daysInCurrentNotebook()) {
+    const fecha = day.fecha;
     if (!fecha.startsWith(monthPrefix)) continue;
     monthPrompts += dayPromptItems(day).length;
     monthPending += (day.tareas || []).filter(task => !task.done).length;
@@ -1607,6 +1608,7 @@ async function saveVisualNote() {
       note = markNotePending(
         {
           id: crypto.randomUUID(),
+          notebookId: state.currentNotebookId,
           fecha: state.selectedDate,
           tipo: "visual",
           titulo: title,
@@ -1705,6 +1707,7 @@ async function addNormalNote() {
   const note = {
     ...(existing || {}),
     id: existing?.id || crypto.randomUUID(),
+    notebookId: existing?.notebookId || state.currentNotebookId,
     fecha: existing?.fecha || state.selectedDate,
     tipo: el("noteType").value,
     titulo: title,
@@ -2071,7 +2074,9 @@ function bindEvents() {
 
   el("exportBtn").onclick = () => {
     const payload = {
-      version: 2,
+      version: 3,
+      notebooks: notebooksList(),
+      currentNotebookId: state.currentNotebookId,
       days: [...state.days.values()],
       notes: [...state.notes.values()].map(({ pendingBlob, ...note }) => note),
     };
@@ -2090,6 +2095,11 @@ function bindEvents() {
     try {
       const parsed = JSON.parse(await file.text());
       if (Array.isArray(parsed.days) && Array.isArray(parsed.notes)) {
+        if (Array.isArray(parsed.notebooks)) {
+          for (const notebook of parsed.notebooks) {
+            await putNotebook({ ...notebook, syncStatus: "pending" });
+          }
+        }
         for (const day of parsed.days) await putDay({ ...day, syncStatus: "pending" });
         for (const note of parsed.notes) await putNote({ ...note, syncStatus: "pending" });
       } else {
