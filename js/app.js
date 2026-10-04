@@ -1377,7 +1377,7 @@ function linkDomain(url) {
 function normalizedLinkUrl(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : \`https://\${raw}\`;
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
   try {
     const parsed = new URL(candidate);
     if (!["http:", "https:"].includes(parsed.protocol)) return "";
@@ -1425,24 +1425,24 @@ function renderLinks() {
     card.className = "saved-link-card";
     const domain = linkDomain(link.url);
     const initial = (domain || "↗").charAt(0).toUpperCase();
-    card.innerHTML = \`
-      <div class="saved-link-icon" aria-hidden="true">\${escapeHtml(initial)}</div>
+    card.innerHTML = `
+      <div class="saved-link-icon" aria-hidden="true">${escapeHtml(initial)}</div>
       <div class="saved-link-main">
         <div class="saved-link-top">
           <div>
-            <h3>\${escapeHtml(link.titulo || domain || "Enlace guardado")}</h3>
-            <a href="\${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">\${escapeHtml(domain)}</a>
+            <h3>${escapeHtml(link.titulo || domain || "Enlace guardado")}</h3>
+            <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(domain)}</a>
           </div>
-          <span class="link-sync \${syncClass(link.syncStatus)}">● \${syncLabel(link.syncStatus)}</span>
+          <span class="link-sync ${syncClass(link.syncStatus)}">● ${syncLabel(link.syncStatus)}</span>
         </div>
-        \${link.nota ? \`<p>\${escapeHtml(link.nota)}</p>\` : ""}
+        ${link.nota ? `<p>${escapeHtml(link.nota)}</p>` : ""}
         <div class="saved-link-actions">
-          <a class="open-saved-link" href="\${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">Abrir ↗</a>
+          <a class="open-saved-link" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">Abrir ↗</a>
           <button class="move-saved-link" type="button">Mover</button>
           <button class="delete-saved-link" type="button">Eliminar</button>
         </div>
       </div>
-    \`;
+    `;
 
     card.querySelector(".move-saved-link").onclick = () => {
       openLinkDialog({
