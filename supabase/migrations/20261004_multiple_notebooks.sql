@@ -1,9 +1,10 @@
 -- Cuaderno Notas · múltiples cuadernos
--- Crea espacios separados por usuario y migra todos los datos existentes
--- al cuaderno "Combustibles Los Baldíos" sin perder información.
+-- 2026-10-04
+-- Adaptada al esquema real de Supabase del proyecto Cuaderno.
+-- Conserva todos los datos existentes y los asigna a "Combustibles Los Baldíos".
 
 create table if not exists public.cuadernos (
-  user_id uuid not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
   id text not null,
   nombre text not null,
   icono text not null default '▤',
@@ -13,6 +14,10 @@ create table if not exists public.cuadernos (
   updated_at timestamptz not null default now(),
   primary key (user_id, id)
 );
+
+create unique index if not exists cuadernos_un_default_por_usuario
+  on public.cuadernos(user_id)
+  where is_default = true;
 
 alter table public.cuadernos enable row level security;
 
@@ -68,14 +73,21 @@ alter table public.cuaderno_notas
   alter column notebook_id set default 'combustibles-los-baldios',
   alter column notebook_id set not null;
 
--- Crear los dos cuadernos iniciales para todos los usuarios con datos ya existentes.
 with usuarios as (
   select user_id from public.cuaderno_dias where user_id is not null
   union
   select user_id from public.cuaderno_notas where user_id is not null
 )
-insert into public.cuadernos (user_id, id, nombre, icono, color, is_default)
-select user_id, 'combustibles-los-baldios', 'Combustibles Los Baldíos', '◫', 'sand', true
+insert into public.cuadernos (
+  user_id, id, nombre, icono, color, is_default
+)
+select
+  user_id,
+  'combustibles-los-baldios',
+  'Combustibles Los Baldíos',
+  '◫',
+  'sand',
+  true
 from usuarios
 on conflict (user_id, id) do update
 set
@@ -89,12 +101,24 @@ with usuarios as (
   union
   select user_id from public.cuaderno_notas where user_id is not null
 )
-insert into public.cuadernos (user_id, id, nombre, icono, color, is_default)
-select user_id, 'programacion', 'Programación', '</>', 'blue', false
+insert into public.cuadernos (
+  user_id, id, nombre, icono, color, is_default
+)
+select
+  user_id,
+  'programacion',
+  'Programación',
+  '</>',
+  'blue',
+  false
 from usuarios
 on conflict (user_id, id) do nothing;
 
--- La fecha deja de ser única por usuario: ahora puede repetirse en distintos cuadernos.
+-- El esquema anterior tenía tanto una constraint como un índice UNIQUE(user_id, fecha).
+-- Ambos deben desaparecer para permitir la misma fecha en cuadernos distintos.
+alter table public.cuaderno_dias
+  drop constraint if exists cuaderno_dias_user_id_fecha_key;
+
 drop index if exists public.cuaderno_dias_user_fecha_uidx;
 
 create unique index if not exists cuaderno_dias_user_notebook_fecha_uidx
@@ -109,6 +133,7 @@ create index if not exists cuadernos_user_updated_idx
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 begin
   new.updated_at = now();
@@ -121,7 +146,6 @@ create trigger set_cuadernos_updated_at
 before update on public.cuadernos
 for each row execute function public.set_updated_at();
 
--- Realtime para que el selector de cuadernos se actualice entre dispositivos.
 do $$
 begin
   if not exists (
