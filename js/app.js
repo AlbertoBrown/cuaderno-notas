@@ -419,6 +419,10 @@ function setCloudUI() {
     box.dataset.state = "error";
     box.querySelector("strong").textContent = "Sin conexión";
     box.querySelector("small").textContent = "Los cambios quedan pendientes";
+  } else if (state.notebookSchemaReady === false && !currentNotebook()?.isDefault) {
+    box.dataset.state = "local";
+    box.querySelector("strong").textContent = "Solo en este dispositivo";
+    box.querySelector("small").textContent = "Pendiente de activar cuadernos en Supabase";
   } else if (state.syncStatus === "syncing") {
     box.dataset.state = "sync";
     box.querySelector("strong").textContent = "Sincronizando";
