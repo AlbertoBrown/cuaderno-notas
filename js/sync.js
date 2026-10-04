@@ -1,11 +1,16 @@
 import {
   supabaseClient,
   detectVisualColumns,
+  detectNotebookSchema,
+  buildNotebookRow,
   buildDayRow,
   buildNoteRow,
 } from "./supabase.js";
 import {
   state,
+  DEFAULT_NOTEBOOK_ID,
+  dayKey,
+  putNotebook,
   putDay,
   putNote,
   deleteNoteLocal,
@@ -46,8 +51,28 @@ function parseRemoteDayPrompts(value, fecha, fallbackDate) {
   }];
 }
 
-function remoteDayToLocal(row) {
+function remoteNotebookToLocal(row) {
   return {
+    id: row.id,
+    nombre: row.nombre || "Nuevo cuaderno",
+    icono: row.icono || "▤",
+    color: row.color || "sand",
+    isDefault: Boolean(row.is_default),
+    createdAt: row.created_at || nowIso(),
+    updatedAt: row.updated_at || row.created_at || nowIso(),
+    syncStatus: "synced",
+    syncError: null,
+  };
+}
+
+function remoteDayToLocal(row, hasNotebookSchema = true) {
+  const notebookId = hasNotebookSchema
+    ? (row.notebook_id || DEFAULT_NOTEBOOK_ID)
+    : DEFAULT_NOTEBOOK_ID;
+
+  return {
+    notebookId,
+    cacheKey: dayKey(row.fecha, notebookId),
     fecha: row.fecha,
     prompt: "",
     prompts: parseRemoteDayPrompts(
@@ -84,10 +109,13 @@ function parseRemoteVisualContent(row) {
   return { prompt, imagePath, legacyImageData, enlace };
 }
 
-function remoteNoteToLocal(row) {
+function remoteNoteToLocal(row, hasNotebookSchema = true) {
   const visual = parseRemoteVisualContent(row);
   return {
     id: row.id,
+    notebookId: hasNotebookSchema
+      ? (row.notebook_id || DEFAULT_NOTEBOOK_ID)
+      : DEFAULT_NOTEBOOK_ID,
     fecha: row.fecha,
     tipo: row.tipo || "note",
     titulo: row.titulo || "",
@@ -121,7 +149,36 @@ function localNoteForRemote(note, hasVisualColumns) {
     safe.contenido = JSON.stringify(visualPayload);
   }
 
-  return buildNoteRow(safe, state.user.id, hasVisualColumns);
+  return buildNoteRow(
+    safe,
+    state.user.id,
+    hasVisualColumns,
+    state.notebookSchemaReady !== false,
+  );
+}
+
+async function pushNotebook(notebook) {
+  const syncingNotebook = { ...notebook, syncStatus: "syncing", syncError: null };
+  await putNotebook(syncingNotebook);
+
+  const { error } = await supabaseClient
+    .from("cuadernos")
+    .upsert(buildNotebookRow(syncingNotebook, state.user.id), { onConflict: "user_id,id" });
+
+  if (error) {
+    await putNotebook({
+      ...syncingNotebook,
+      syncStatus: "error",
+      syncError: errorText(error),
+    });
+    throw error;
+  }
+
+  await putNotebook({
+    ...syncingNotebook,
+    syncStatus: "synced",
+    syncError: null,
+  });
 }
 
 function errorText(error) {
@@ -134,13 +191,18 @@ function errorText(error) {
   );
 }
 
-async function pushDay(day) {
+async function pushDay(day, hasNotebookSchema) {
+  if (!hasNotebookSchema && day.notebookId !== DEFAULT_NOTEBOOK_ID) return;
+
   const syncingDay = { ...day, syncStatus: "syncing", syncError: null };
   await putDay(syncingDay);
 
   const { error } = await supabaseClient
     .from("cuaderno_dias")
-    .upsert(buildDayRow(syncingDay, state.user.id), { onConflict: "user_id,fecha" });
+    .upsert(
+      buildDayRow(syncingDay, state.user.id, hasNotebookSchema),
+      { onConflict: hasNotebookSchema ? "user_id,notebook_id,fecha" : "user_id,fecha" },
+    );
 
   if (error) {
     await putDay({ ...syncingDay, syncStatus: "error", syncError: errorText(error) });
@@ -186,7 +248,9 @@ async function ensureVisualImage(note) {
   return current;
 }
 
-async function pushNote(note, hasVisualColumns) {
+async function pushNote(note, hasVisualColumns, hasNotebookSchema) {
+  if (!hasNotebookSchema && note.notebookId !== DEFAULT_NOTEBOOK_ID) return;
+
   if (note.deleted) {
     const { error } = await supabaseClient
       .from("cuaderno_notas")
@@ -257,7 +321,17 @@ export async function pushPending() {
   state.syncStatus = "syncing";
 
   try {
-    const hasVisualColumns = await detectVisualColumns();
+    const [hasVisualColumns, hasNotebookSchema] = await Promise.all([
+      detectVisualColumns(),
+      detectNotebookSchema(),
+    ]);
+    state.notebookSchemaReady = hasNotebookSchema;
+
+    const pendingNotebooks = hasNotebookSchema
+      ? [...state.notebooks.values()].filter(notebook =>
+          ["pending", "error"].includes(notebook.syncStatus),
+        )
+      : [];
 
     const pendingDays = [...state.days.values()].filter(day =>
       ["pending", "error"].includes(day.syncStatus),
@@ -267,8 +341,11 @@ export async function pushPending() {
       ["pending", "error"].includes(note.syncStatus),
     );
 
-    for (const day of pendingDays) await pushDay(day);
-    for (const note of pendingNotes) await pushNote(note, hasVisualColumns);
+    for (const notebook of pendingNotebooks) await pushNotebook(notebook);
+    for (const day of pendingDays) await pushDay(day, hasNotebookSchema);
+    for (const note of pendingNotes) {
+      await pushNote(note, hasVisualColumns, hasNotebookSchema);
+    }
 
     state.syncStatus = "synced";
   } catch (error) {
@@ -280,18 +357,30 @@ export async function pushPending() {
   }
 }
 
-async function mergeRemoteDay(remote) {
-  const local = state.days.get(remote.fecha);
-  const incoming = remoteDayToLocal(remote);
+async function mergeRemoteNotebook(remote) {
+  const local = state.notebooks.get(remote.id);
+  const incoming = remoteNotebookToLocal(remote);
+
+  if (!local || remoteWins(local, incoming)) {
+    await putNotebook(incoming);
+  }
+}
+
+async function mergeRemoteDay(remote, hasNotebookSchema) {
+  const notebookId = hasNotebookSchema
+    ? (remote.notebook_id || DEFAULT_NOTEBOOK_ID)
+    : DEFAULT_NOTEBOOK_ID;
+  const local = state.days.get(dayKey(remote.fecha, notebookId));
+  const incoming = remoteDayToLocal(remote, hasNotebookSchema);
 
   if (!local || remoteWins(local, incoming)) {
     await putDay(incoming);
   }
 }
 
-async function mergeRemoteNote(remote) {
+async function mergeRemoteNote(remote, hasNotebookSchema) {
   const local = state.notes.get(remote.id);
-  const incoming = remoteNoteToLocal(remote);
+  const incoming = remoteNoteToLocal(remote, hasNotebookSchema);
 
   if (!local || remoteWins(local, incoming)) {
     await putNote(incoming);
@@ -302,8 +391,20 @@ export async function pullAndMerge() {
   if (!state.user || !navigator.onLine) return;
   state.syncStatus = "syncing";
 
-  const [{ data: days, error: daysError }, { data: notes, error: notesError }] =
+  const hasNotebookSchema = await detectNotebookSchema();
+  state.notebookSchemaReady = hasNotebookSchema;
+
+  const notebookPromise = hasNotebookSchema
+    ? supabaseClient
+        .from("cuadernos")
+        .select("*")
+        .eq("user_id", state.user.id)
+        .order("created_at", { ascending: true })
+    : Promise.resolve({ data: [], error: null });
+
+  const [{ data: notebooks, error: notebooksError }, { data: days, error: daysError }, { data: notes, error: notesError }] =
     await Promise.all([
+      notebookPromise,
       supabaseClient
         .from("cuaderno_dias")
         .select("*")
@@ -315,19 +416,27 @@ export async function pullAndMerge() {
         .order("updated_at", { ascending: true }),
     ]);
 
+  if (notebooksError) throw notebooksError;
   if (daysError) throw daysError;
   if (notesError) throw notesError;
 
+  for (const notebook of notebooks || []) {
+    await mergeRemoteNotebook(notebook);
+  }
+
   const remoteDayKeys = new Set();
   for (const day of days || []) {
-    remoteDayKeys.add(day.fecha);
-    await mergeRemoteDay(day);
+    const notebookId = hasNotebookSchema
+      ? (day.notebook_id || DEFAULT_NOTEBOOK_ID)
+      : DEFAULT_NOTEBOOK_ID;
+    remoteDayKeys.add(dayKey(day.fecha, notebookId));
+    await mergeRemoteDay(day, hasNotebookSchema);
   }
 
   const remoteNoteIds = new Set();
   for (const note of notes || []) {
     remoteNoteIds.add(note.id);
-    await mergeRemoteNote(note);
+    await mergeRemoteNote(note, hasNotebookSchema);
   }
 
   // A synced local item missing remotely is stale; pending/error items are preserved.
@@ -335,6 +444,7 @@ export async function pullAndMerge() {
     if (
       note.syncStatus === "synced" &&
       !note.deleted &&
+      (hasNotebookSchema || note.notebookId === DEFAULT_NOTEBOOK_ID) &&
       !remoteNoteIds.has(note.id)
     ) {
       await deleteNoteLocal(note.id);
@@ -342,7 +452,9 @@ export async function pullAndMerge() {
   }
 
   state.syncStatus = "synced";
-  state.lastSyncError = null;
+  state.lastSyncError = hasNotebookSchema
+    ? null
+    : "La migración de cuadernos todavía no está aplicada en Supabase.";
 }
 
 export async function syncNow() {
@@ -371,6 +483,16 @@ export function startRealtime(onChange) {
 
   realtimeChannel = supabaseClient
     .channel(`cuaderno-${state.user.id}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "cuadernos",
+        filter: `user_id=eq.${state.user.id}`,
+      },
+      () => scheduleRealtimeRefresh(onChange),
+    )
     .on(
       "postgres_changes",
       {
@@ -407,7 +529,11 @@ export function retryPendingLater(onChange) {
 
   const run = async () => {
     if (!navigator.onLine || !state.user) return;
-    const pending = [...state.notes.values(), ...state.days.values()].some(item =>
+    const pending = [
+      ...state.notebooks.values(),
+      ...state.notes.values(),
+      ...state.days.values(),
+    ].some(item =>
       ["pending", "error"].includes(item.syncStatus),
     );
     if (!pending) return;
