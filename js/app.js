@@ -261,7 +261,7 @@ async function createNotebook() {
   const notebook = {
     id: notebookSlug(name),
     nombre: name,
-    icono: selectedNotebookColor === "blue" ? "</>" : "▤",
+    icono: "▤",
     color: selectedNotebookColor,
     isDefault: false,
     createdAt: now,
