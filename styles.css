@@ -1389,3 +1389,224 @@ body.calendar-dragging .calendar-day-cell{
   .prompt-panel .daily-prompt-composer textarea{min-height:110px;font-size:16px}
   .add-daily-prompt-btn{width:100%;margin-left:0}
 }
+
+
+/* Mobile polish · v32 */
+.nav-item .nav-icon{
+  flex:0 0 auto;
+}
+.nav-item .nav-label{
+  display:block;
+  width:auto;
+  height:auto;
+  border:0;
+  border-radius:0;
+  line-height:1.1;
+}
+
+.mobile-upload-choices{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  width:min(100%,390px);
+  margin-top:18px;
+}
+.mobile-upload-choices .upload-btn{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:46px;
+  margin:0;
+  font-weight:750;
+}
+.upload-camera{
+  background:#111;
+  color:#fff;
+  border:1px solid #111;
+}
+
+@media(max-width:1100px){
+  .nav-item .nav-label{display:none}
+}
+
+@media(max-width:720px){
+  .workspace{
+    padding-bottom:calc(102px + env(safe-area-inset-bottom));
+  }
+
+  .sidebar{
+    border-top:1px solid rgba(255,255,255,.08);
+    box-shadow:0 -10px 30px rgba(0,0,0,.14);
+  }
+  .side-nav{
+    display:grid;
+    grid-template-columns:repeat(6,minmax(0,1fr));
+    gap:2px;
+    width:100%;
+  }
+  .nav-item,
+  .nav-item:nth-child(n+6){
+    display:flex;
+    width:100%;
+    min-width:0;
+    height:58px;
+    min-height:58px;
+    padding:5px 2px 4px;
+    flex-direction:column;
+    justify-content:center;
+    gap:3px;
+    border-radius:14px;
+    font-size:9px;
+    line-height:1;
+    color:#bdbdbd;
+    touch-action:manipulation;
+  }
+  .nav-item .nav-icon{
+    width:27px;
+    height:27px;
+    border-color:#454545;
+    font-size:13px;
+  }
+  .nav-item .nav-label{
+    display:block;
+    width:100%;
+    height:auto;
+    overflow:hidden;
+    border:0;
+    border-radius:0;
+    color:inherit;
+    font-size:9px;
+    font-weight:650;
+    line-height:1.05;
+    text-align:center;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .nav-item.active{
+    background:#f4f1e8;
+    color:#111;
+  }
+  .nav-item.active .nav-icon{
+    border-color:#111;
+  }
+
+  .visual-page-header{
+    align-items:flex-start;
+  }
+  .visual-page-header>div:first-child{
+    min-width:0;
+  }
+  .visual-page-header h2{
+    font-size:31px;
+    line-height:1;
+  }
+  .visual-page-header p{
+    max-width:290px;
+    line-height:1.4;
+  }
+
+  .visual-upload-card{
+    padding:10px;
+    background:#fffdf9;
+  }
+  .image-placeholder{
+    min-height:210px;
+    padding:18px 12px;
+    border-radius:16px;
+  }
+  .image-placeholder strong{
+    font-size:18px;
+  }
+  .image-placeholder small{
+    max-width:290px;
+    line-height:1.35;
+  }
+  .mobile-upload-choices{
+    width:100%;
+    margin-top:16px;
+    gap:8px;
+  }
+  .mobile-upload-choices .upload-btn{
+    min-height:50px;
+    padding:10px 8px;
+    border-radius:14px;
+    font-size:12px;
+  }
+
+  .visual-preview-wrap{
+    border-radius:16px;
+  }
+  .visual-image-preview{
+    width:100%;
+    max-height:52dvh;
+    border-radius:16px;
+  }
+  .image-actions{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:7px;
+    margin-top:9px;
+  }
+  .image-actions .upload-btn{
+    width:100%;
+    min-height:46px;
+    border-radius:13px;
+    font-weight:700;
+  }
+  .image-actions .upload-btn.danger{
+    grid-column:1/-1;
+  }
+
+  .visual-form-card{
+    padding:14px 12px;
+    background:#fffdf9;
+  }
+  .visual-form input,
+  .visual-form textarea,
+  .image-quality-row select{
+    border-radius:12px;
+  }
+  .visual-form textarea{
+    min-height:175px;
+  }
+  .visual-form-actions{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+  .visual-save-btn{
+    order:-1;
+    min-height:50px;
+    width:100%;
+    font-size:14px;
+  }
+  .visual-copy-btn{
+    min-height:46px;
+    width:100%;
+  }
+
+  .visual-library{
+    margin-top:18px;
+  }
+  .visual-library-head{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:7px;
+  }
+  .visual-library-count{
+    justify-self:start;
+    padding:5px 8px;
+    border-radius:999px;
+    background:#ece7dd;
+    font-size:10px;
+  }
+}
+
+@media(max-width:390px){
+  .nav-item .nav-label{
+    font-size:8px;
+  }
+  .mobile-upload-choices{
+    grid-template-columns:1fr;
+  }
+}

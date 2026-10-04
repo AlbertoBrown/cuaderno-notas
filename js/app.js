@@ -1322,6 +1322,10 @@ async function recompressVisualDraft() {
 
 async function handleImageSelection(file) {
   if (!file) return;
+  if (file.type && !file.type.startsWith("image/")) {
+    toast("Selecciona una foto o imagen", "error");
+    return;
+  }
 
   revokePreviewUrl(visualDraft.previewUrl);
   const previewUrl = await filePreviewUrl(file);
@@ -1769,9 +1773,24 @@ function bindEvents() {
     }
   });
 
-  el("visualImageInput").addEventListener("change", event => handleImageSelection(event.target.files?.[0]));
-  el("visualCameraInput").addEventListener("change", event => handleImageSelection(event.target.files?.[0]));
-  el("visualReplaceImageBtn").onclick = () => el("visualImageInput").click();
+  const openVisualPicker = input => {
+    if (!input) return;
+    input.value = "";
+    input.click();
+  };
+  const onVisualFileChange = async event => {
+    const input = event.target;
+    const file = input.files?.[0];
+    if (file) await handleImageSelection(file);
+    input.value = "";
+  };
+
+  el("visualImageInput").addEventListener("change", onVisualFileChange);
+  el("visualCameraInput").addEventListener("change", onVisualFileChange);
+  el("visualGalleryBtn").onclick = () => openVisualPicker(el("visualImageInput"));
+  el("visualCameraBtn").onclick = () => openVisualPicker(el("visualCameraInput"));
+  el("visualReplaceImageBtn").onclick = () => openVisualPicker(el("visualImageInput"));
+  el("visualRetakeImageBtn").onclick = () => openVisualPicker(el("visualCameraInput"));
   el("visualQualitySelect").addEventListener("change", async event => {
     const preset = IMAGE_QUALITY_PRESETS[event.target.value] || IMAGE_QUALITY_PRESETS.balanced;
     el("visualQualityHint").textContent = preset.description;

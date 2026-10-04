@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="apple-touch-icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=31" />
+  <link rel="stylesheet" href="styles.css?v=32" />
 </head>
 <body>
   <div class="app-shell">
@@ -27,12 +27,12 @@
       </div>
 
       <nav class="side-nav">
-        <button class="nav-item active" data-view="today"><span>⌂</span>Hoy</button>
-        <button class="nav-item" data-view="calendar"><span>▦</span>Calendario</button>
-        <button class="nav-item" data-view="notes"><span>✎</span>Apuntes</button>
-        <button class="nav-item" data-view="prompts"><span>◌</span>Prompts</button>
-        <button class="nav-item" data-view="incidents"><span>!</span>Incidencias</button>
-        <button class="nav-item" data-view="visual"><span>▧</span>Foto + Prompt</button>
+        <button class="nav-item active" data-view="today" aria-label="Hoy"><span class="nav-icon">⌂</span><span class="nav-label">Hoy</span></button>
+        <button class="nav-item" data-view="calendar" aria-label="Calendario"><span class="nav-icon">▦</span><span class="nav-label">Calendario</span></button>
+        <button class="nav-item" data-view="notes" aria-label="Apuntes"><span class="nav-icon">✎</span><span class="nav-label">Apuntes</span></button>
+        <button class="nav-item" data-view="prompts" aria-label="Prompts"><span class="nav-icon">◌</span><span class="nav-label">Prompts</span></button>
+        <button class="nav-item" data-view="incidents" aria-label="Incidencias"><span class="nav-icon">!</span><span class="nav-label">Incidencias</span></button>
+        <button class="nav-item" data-view="visual" aria-label="Fotos"><span class="nav-icon">▧</span><span class="nav-label">Fotos</span></button>
       </nav>
 
       <div class="sidebar-footer">
@@ -279,11 +279,14 @@
                   <span class="image-plus">＋</span>
                 </div>
                 <strong>Añade una imagen</strong>
-                <small>Foto, captura de pantalla o documento</small>
-                <small class="image-format-hint">JPG, PNG · Optimización automática</small>
-                <label class="upload-btn upload-primary">⇧&nbsp;&nbsp;Seleccionar archivo
-                  <input id="visualImageInput" type="file" accept="image/*" hidden />
-                </label>
+                <small>Foto, captura de pantalla o documento visual</small>
+                <small class="image-format-hint">Desde el móvil: galería o cámara · Optimización automática</small>
+                <div class="mobile-upload-choices">
+                  <button id="visualGalleryBtn" class="upload-btn upload-primary" type="button">▧&nbsp;&nbsp;Elegir de galería</button>
+                  <button id="visualCameraBtn" class="upload-btn upload-camera" type="button">◉&nbsp;&nbsp;Hacer foto</button>
+                </div>
+                <input id="visualImageInput" type="file" accept="image/*" hidden />
+                <input id="visualCameraInput" type="file" accept="image/*" capture="environment" hidden />
               </div>
 
               <div class="visual-preview-wrap">
@@ -303,10 +306,8 @@
               </div>
 
               <div class="image-actions">
-                <button id="visualReplaceImageBtn" class="upload-btn secondary" type="button">Cambiar imagen</button>
-                <label class="upload-btn secondary">Cámara
-                  <input id="visualCameraInput" type="file" accept="image/*" capture="environment" hidden />
-                </label>
+                <button id="visualReplaceImageBtn" class="upload-btn secondary" type="button">▧&nbsp; Elegir otra</button>
+                <button id="visualRetakeImageBtn" class="upload-btn secondary" type="button">◉&nbsp; Hacer otra foto</button>
                 <button id="visualRemoveImageBtn" class="upload-btn danger" type="button" hidden>Quitar imagen</button>
               </div>
               <small id="visualImageInfo" class="visual-image-info"></small>
@@ -473,6 +474,6 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="js/app.js?v=31"></script>
+  <script type="module" src="js/app.js?v=32"></script>
 </body>
 </html>
