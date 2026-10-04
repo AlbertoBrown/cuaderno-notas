@@ -7,12 +7,14 @@ import {
   dayForDate,
   notesForDate,
   allVisualNotes,
+  linksForNotebook,
   currentNotebook,
   notebooksList,
   putNotebook,
   setCurrentNotebook,
   putDay,
   putNote,
+  putLink,
   markDayPending,
   markNotePending,
   nowIso,
@@ -131,6 +133,10 @@ function notebookActivity(notebookId) {
     if (note.notebookId !== notebookId || note.deleted) continue;
     latest = Math.max(latest, Date.parse(note.updatedAt || note.createdAt || 0) || 0);
   }
+  for (const link of state.links.values()) {
+    if (link.notebookId !== notebookId || link.deleted) continue;
+    latest = Math.max(latest, Date.parse(link.updatedAt || link.createdAt || 0) || 0);
+  }
   return latest;
 }
 
@@ -193,6 +199,9 @@ function renderNotebooksView() {
         (day.tareas || []).length
       )
     ).length;
+    const links = [...state.links.values()].filter(link =>
+      link.notebookId === notebook.id && !link.deleted
+    ).length;
     const activity = notebookActivity(notebook.id);
     const activityText = activity
       ? formatDate(new Date(activity), { day: "2-digit", month: "short" })
@@ -215,6 +224,7 @@ function renderNotebooksView() {
       <div class="notebook-card-meta">
         <span>${notes} nota${notes === 1 ? "" : "s"}</span>
         <span>${days} día${days === 1 ? "" : "s"}</span>
+        <span>${links} enlace${links === 1 ? "" : "s"}</span>
         <span>${activityText}</span>
       </div>
     `;
@@ -1356,20 +1366,193 @@ function renderCalendarView() {
   renderCalendarDetail();
 }
 
+function linkDomain(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function normalizedLinkUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : \`https://\${raw}\`;
+  try {
+    const parsed = new URL(candidate);
+    if (!["http:", "https:"].includes(parsed.protocol)) return "";
+    return parsed.href;
+  } catch {
+    return "";
+  }
+}
+
+function renderLinkNotebookOptions(selectedId = state.currentNotebookId) {
+  const select = el("linkNotebookSelect");
+  if (!select) return;
+  select.replaceChildren();
+  for (const notebook of notebooksList()) {
+    const option = document.createElement("option");
+    option.value = notebook.id;
+    option.textContent = notebook.nombre;
+    option.selected = notebook.id === selectedId;
+    select.appendChild(option);
+  }
+}
+
+function openLinkDialog(prefill = {}) {
+  renderLinkNotebookOptions(prefill.notebookId || state.currentNotebookId);
+  el("linkUrlInput").value = prefill.url || "";
+  el("linkTitleInput").value = prefill.title || "";
+  el("linkNoteInput").value = prefill.note || "";
+  el("linkDialog").showModal();
+  setTimeout(() => (prefill.url ? el("linkTitleInput") : el("linkUrlInput")).focus(), 40);
+}
+
+function renderLinks() {
+  const list = el("linksList");
+  if (!list) return;
+  const links = linksForNotebook();
+
+  if (!links.length) {
+    list.innerHTML = '<div class="empty-state links-empty">Todavía no has guardado enlaces en este cuaderno.<br><small>Usa “Guardar enlace” para añadir el primero.</small></div>';
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  for (const link of links) {
+    const card = document.createElement("article");
+    card.className = "saved-link-card";
+    const domain = linkDomain(link.url);
+    const initial = (domain || "↗").charAt(0).toUpperCase();
+    card.innerHTML = \`
+      <div class="saved-link-icon" aria-hidden="true">\${escapeHtml(initial)}</div>
+      <div class="saved-link-main">
+        <div class="saved-link-top">
+          <div>
+            <h3>\${escapeHtml(link.titulo || domain || "Enlace guardado")}</h3>
+            <a href="\${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">\${escapeHtml(domain)}</a>
+          </div>
+          <span class="link-sync \${syncClass(link.syncStatus)}">● \${syncLabel(link.syncStatus)}</span>
+        </div>
+        \${link.nota ? \`<p>\${escapeHtml(link.nota)}</p>\` : ""}
+        <div class="saved-link-actions">
+          <a class="open-saved-link" href="\${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">Abrir ↗</a>
+          <button class="move-saved-link" type="button">Mover</button>
+          <button class="delete-saved-link" type="button">Eliminar</button>
+        </div>
+      </div>
+    \`;
+
+    card.querySelector(".move-saved-link").onclick = () => {
+      openLinkDialog({
+        url: link.url,
+        title: link.titulo,
+        note: link.nota,
+        notebookId: link.notebookId,
+      });
+      el("linkDialog").dataset.editingId = link.id;
+    };
+
+    card.querySelector(".delete-saved-link").onclick = async () => {
+      await putLink({
+        ...link,
+        deleted: true,
+        updatedAt: nowIso(),
+        syncStatus: "pending",
+        syncError: null,
+      });
+      renderLinks();
+      renderNotebooksView();
+      syncSoon();
+      toast("Enlace eliminado", "success");
+    };
+
+    fragment.appendChild(card);
+  }
+  list.replaceChildren(fragment);
+}
+
+async function saveLink() {
+  const url = normalizedLinkUrl(el("linkUrlInput").value);
+  if (!url) {
+    el("linkUrlInput").focus();
+    toast("Escribe una URL válida", "error");
+    return;
+  }
+
+  const editingId = el("linkDialog").dataset.editingId || "";
+  const existing = editingId ? state.links.get(editingId) : null;
+  const notebookId = el("linkNotebookSelect").value || state.currentNotebookId;
+  const now = nowIso();
+
+  await putLink({
+    ...(existing || {}),
+    id: existing?.id || crypto.randomUUID(),
+    notebookId,
+    url,
+    titulo: el("linkTitleInput").value.trim() || linkDomain(url),
+    nota: el("linkNoteInput").value.trim(),
+    etiquetas: existing?.etiquetas || [],
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+    syncStatus: "pending",
+    syncError: null,
+    deleted: false,
+  });
+
+  el("linkDialog").dataset.editingId = "";
+  el("linkDialog").close();
+
+  if (notebookId === state.currentNotebookId) renderLinks();
+  renderNotebooksView();
+  syncSoon();
+  toast(existing ? "Enlace actualizado" : "Enlace guardado", "success");
+}
+
+function openSharedLinkIfPresent() {
+  const params = new URLSearchParams(window.location.search);
+  const sharedUrl = params.get("url") || "";
+  const sharedTitle = params.get("title") || "";
+  const sharedText = params.get("text") || "";
+  if (!sharedUrl && !sharedText) return;
+
+  let url = sharedUrl;
+  if (!url) {
+    const match = sharedText.match(/https?:\/\/\S+/i);
+    if (match) url = match[0];
+  }
+  if (!url) return;
+
+  showView("links");
+  renderAll();
+  openLinkDialog({
+    url,
+    title: sharedTitle,
+    note: sharedText && !sharedText.includes(url) ? sharedText : "",
+    notebookId: state.currentNotebookId,
+  });
+  history.replaceState({}, "", window.location.pathname);
+}
+
 function showView(view) {
   state.showingNotebooks = false;
   state.currentView = view;
   const visual = view === "visual";
   const calendar = view === "calendar";
-  el("mainNotebookView").hidden = visual || calendar;
+  const links = view === "links";
+  el("mainNotebookView").hidden = visual || calendar || links;
   el("visualNotesView").hidden = !visual;
   el("calendarView").hidden = !calendar;
-  el("dateStrip").hidden = calendar;
+  el("linksView").hidden = !links;
+  el("dateStrip").hidden = calendar || links;
   el("pageTitle").innerHTML = visual
     ? "Apuntes visuales<span>.</span>"
     : calendar
       ? "Calendario<span>.</span>"
-      : "Mis notas<span>.</span>";
+      : links
+        ? "Enlaces<span>.</span>"
+        : "Mis notas<span>.</span>";
   document.querySelectorAll(".nav-item").forEach(button => {
     button.classList.toggle("active", button.dataset.view === view);
   });
@@ -1389,6 +1572,8 @@ function renderAll() {
 
   if (state.currentView === "calendar") {
     renderCalendarView();
+  } else if (state.currentView === "links") {
+    renderLinks();
   } else {
     renderDateHeader();
     if (state.currentView === "visual") renderVisualNotes();
@@ -1440,6 +1625,7 @@ function syncSoon() {
     if (state.showingNotebooks) renderNotebooksView();
     else if (state.currentView === "visual") renderVisualNotes();
     else if (state.currentView === "calendar") renderCalendarView();
+    else if (state.currentView === "links") renderLinks();
     else renderNotes();
   });
 }
@@ -1751,6 +1937,27 @@ async function addNormalNote() {
 
 function bindEvents() {
   el("notebookBackBtn").onclick = openNotebookPicker;
+  el("newLinkBtn").onclick = () => {
+    el("linkDialog").dataset.editingId = "";
+    openLinkDialog();
+  };
+  el("closeLinkDialogBtn").onclick = () => {
+    el("linkDialog").dataset.editingId = "";
+    el("linkDialog").close();
+  };
+  el("cancelLinkBtn").onclick = () => {
+    el("linkDialog").dataset.editingId = "";
+    el("linkDialog").close();
+  };
+  el("saveLinkBtn").onclick = saveLink;
+  el("linkUrlInput").addEventListener("paste", () => {
+    setTimeout(() => {
+      const url = normalizedLinkUrl(el("linkUrlInput").value);
+      if (url && !el("linkTitleInput").value.trim()) {
+        el("linkTitleInput").value = linkDomain(url);
+      }
+    }, 0);
+  });
   el("newNotebookBtn").onclick = () => {
     selectedNotebookColor = "sand";
     document.querySelectorAll(".notebook-color-option").forEach(button => {
@@ -2123,6 +2330,7 @@ function bindEvents() {
       currentNotebookId: state.currentNotebookId,
       days: [...state.days.values()],
       notes: [...state.notes.values()].map(({ pendingBlob, ...note }) => note),
+      links: [...state.links.values()],
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
@@ -2146,6 +2354,9 @@ function bindEvents() {
         }
         for (const day of parsed.days) await putDay({ ...day, syncStatus: "pending" });
         for (const note of parsed.notes) await putNote({ ...note, syncStatus: "pending" });
+        if (Array.isArray(parsed.links)) {
+          for (const link of parsed.links) await putLink({ ...link, syncStatus: "pending" });
+        }
       } else {
         toast("Formato antiguo: impórtalo desde una copia previa de la app", "error");
       }
@@ -2347,6 +2558,7 @@ async function init() {
   renderAll();
   await bootAuth();
   renderAll();
+  openSharedLinkIfPresent();
 }
 
 init().catch(error => {
