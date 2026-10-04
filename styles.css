@@ -2036,3 +2036,5 @@ body.notebook-picker-open #visualNotesView{
 @media(max-width:390px){
   .notebooks-hero h2{font-size:39px}
 }
+
+body.notebook-picker-open .topbar-title-wrap #pageTitle{display:none}
