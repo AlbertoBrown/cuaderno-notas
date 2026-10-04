@@ -5,6 +5,7 @@ import {
   buildNotebookRow,
   buildDayRow,
   buildNoteRow,
+  buildLinkRow,
 } from "./supabase.js";
 import {
   state,
@@ -13,7 +14,9 @@ import {
   putNotebook,
   putDay,
   putNote,
+  putLink,
   deleteNoteLocal,
+  deleteLinkLocal,
   remoteWins,
   nowIso,
 } from "./store.js";
@@ -109,6 +112,22 @@ function parseRemoteVisualContent(row) {
   return { prompt, imagePath, legacyImageData, enlace };
 }
 
+function remoteLinkToLocal(row) {
+  return {
+    id: row.id,
+    notebookId: row.notebook_id || DEFAULT_NOTEBOOK_ID,
+    url: row.url || "",
+    titulo: row.titulo || "",
+    nota: row.nota || "",
+    etiquetas: Array.isArray(row.etiquetas) ? row.etiquetas : [],
+    createdAt: row.created_at || nowIso(),
+    updatedAt: row.updated_at || row.created_at || nowIso(),
+    syncStatus: "synced",
+    syncError: null,
+    deleted: false,
+  };
+}
+
 function remoteNoteToLocal(row, hasNotebookSchema = true) {
   const visual = parseRemoteVisualContent(row);
   return {
@@ -189,6 +208,38 @@ function errorText(error) {
     error?.statusCode ||
     "Error desconocido"
   );
+}
+
+async function pushLink(link) {
+  if (link.deleted) {
+    const { error } = await supabaseClient
+      .from("cuaderno_enlaces")
+      .delete()
+      .eq("id", link.id)
+      .eq("user_id", state.user.id);
+
+    if (error) {
+      await putLink({ ...link, syncStatus: "error", syncError: errorText(error) });
+      throw error;
+    }
+
+    await deleteLinkLocal(link.id);
+    return;
+  }
+
+  const syncingLink = { ...link, syncStatus: "syncing", syncError: null };
+  await putLink(syncingLink);
+
+  const { error } = await supabaseClient
+    .from("cuaderno_enlaces")
+    .upsert(buildLinkRow(syncingLink, state.user.id), { onConflict: "id" });
+
+  if (error) {
+    await putLink({ ...syncingLink, syncStatus: "error", syncError: errorText(error) });
+    throw error;
+  }
+
+  await putLink({ ...syncingLink, syncStatus: "synced", syncError: null });
 }
 
 async function pushDay(day, hasNotebookSchema) {
@@ -341,11 +392,16 @@ export async function pushPending() {
       ["pending", "error"].includes(note.syncStatus),
     );
 
+    const pendingLinks = [...state.links.values()].filter(link =>
+      ["pending", "error"].includes(link.syncStatus),
+    );
+
     for (const notebook of pendingNotebooks) await pushNotebook(notebook);
     for (const day of pendingDays) await pushDay(day, hasNotebookSchema);
     for (const note of pendingNotes) {
       await pushNote(note, hasVisualColumns, hasNotebookSchema);
     }
+    for (const link of pendingLinks) await pushLink(link);
 
     state.syncStatus = "synced";
   } catch (error) {
@@ -378,6 +434,15 @@ async function mergeRemoteDay(remote, hasNotebookSchema) {
   }
 }
 
+async function mergeRemoteLink(remote) {
+  const local = state.links.get(remote.id);
+  const incoming = remoteLinkToLocal(remote);
+
+  if (!local || remoteWins(local, incoming)) {
+    await putLink(incoming);
+  }
+}
+
 async function mergeRemoteNote(remote, hasNotebookSchema) {
   const local = state.notes.get(remote.id);
   const incoming = remoteNoteToLocal(remote, hasNotebookSchema);
@@ -402,23 +467,33 @@ export async function pullAndMerge() {
         .order("created_at", { ascending: true })
     : Promise.resolve({ data: [], error: null });
 
-  const [{ data: notebooks, error: notebooksError }, { data: days, error: daysError }, { data: notes, error: notesError }] =
-    await Promise.all([
-      notebookPromise,
-      supabaseClient
-        .from("cuaderno_dias")
-        .select("*")
-        .eq("user_id", state.user.id),
-      supabaseClient
-        .from("cuaderno_notas")
-        .select("*")
-        .eq("user_id", state.user.id)
-        .order("updated_at", { ascending: true }),
-    ]);
+  const [
+    { data: notebooks, error: notebooksError },
+    { data: days, error: daysError },
+    { data: notes, error: notesError },
+    { data: links, error: linksError },
+  ] = await Promise.all([
+    notebookPromise,
+    supabaseClient
+      .from("cuaderno_dias")
+      .select("*")
+      .eq("user_id", state.user.id),
+    supabaseClient
+      .from("cuaderno_notas")
+      .select("*")
+      .eq("user_id", state.user.id)
+      .order("updated_at", { ascending: true }),
+    supabaseClient
+      .from("cuaderno_enlaces")
+      .select("*")
+      .eq("user_id", state.user.id)
+      .order("updated_at", { ascending: true }),
+  ]);
 
   if (notebooksError) throw notebooksError;
   if (daysError) throw daysError;
   if (notesError) throw notesError;
+  if (linksError) throw linksError;
 
   for (const notebook of notebooks || []) {
     await mergeRemoteNotebook(notebook);
@@ -437,6 +512,22 @@ export async function pullAndMerge() {
   for (const note of notes || []) {
     remoteNoteIds.add(note.id);
     await mergeRemoteNote(note, hasNotebookSchema);
+  }
+
+  const remoteLinkIds = new Set();
+  for (const link of links || []) {
+    remoteLinkIds.add(link.id);
+    await mergeRemoteLink(link);
+  }
+
+  for (const link of [...state.links.values()]) {
+    if (
+      link.syncStatus === "synced" &&
+      !link.deleted &&
+      !remoteLinkIds.has(link.id)
+    ) {
+      await deleteLinkLocal(link.id);
+    }
   }
 
   // A synced local item missing remotely is stale; pending/error items are preserved.
@@ -517,6 +608,16 @@ export function startRealtime(onChange) {
       },
       () => scheduleRealtimeRefresh(onChange),
     )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "cuaderno_enlaces",
+        filter: `user_id=eq.${state.user.id}`,
+      },
+      () => scheduleRealtimeRefresh(onChange),
+    )
     .subscribe();
 }
 
@@ -536,6 +637,7 @@ export function retryPendingLater(onChange) {
     const pending = [
       ...state.notebooks.values(),
       ...state.notes.values(),
+      ...state.links.values(),
       ...state.days.values(),
     ].some(item =>
       ["pending", "error"].includes(item.syncStatus),
