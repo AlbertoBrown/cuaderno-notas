@@ -84,6 +84,8 @@ let editorHomeMarker = null;
 let calendarMonthKey = state.selectedDate.slice(0, 7);
 let calendarDetailExpanded = false;
 let selectedNotebookColor = "sand";
+let pendingLinkDraft = null;
+let returnToLinkAfterNotebookCreate = false;
 
 function toKey(date) {
   const y = date.getFullYear();
@@ -291,6 +293,13 @@ async function createNotebook() {
   renderNotebooksView();
   syncSoon();
   toast("Cuaderno creado", "success");
+
+  if (returnToLinkAfterNotebookCreate) {
+    returnToLinkAfterNotebookCreate = false;
+    const draft = pendingLinkDraft || {};
+    pendingLinkDraft = null;
+    openLinkDialog({ ...draft, notebookId: notebook.id });
+  }
 }
 
 function parseNormalNoteContent(value = "") {
@@ -1398,6 +1407,11 @@ function renderLinkNotebookOptions(selectedId = state.currentNotebookId) {
     option.selected = notebook.id === selectedId;
     select.appendChild(option);
   }
+
+  const createOption = document.createElement("option");
+  createOption.value = "__new__";
+  createOption.textContent = "+ Nuevo cuaderno…";
+  select.appendChild(createOption);
 }
 
 function openLinkDialog(prefill = {}) {
@@ -1504,7 +1518,7 @@ async function saveLink() {
   el("linkDialog").dataset.editingId = "";
   el("linkDialog").close();
 
-  if (notebookId === state.currentNotebookId) renderLinks();
+  renderLinks();
   renderNotebooksView();
   syncSoon();
   toast(existing ? "Enlace actualizado" : "Enlace guardado", "success");
@@ -1950,6 +1964,26 @@ function bindEvents() {
     el("linkDialog").close();
   };
   el("saveLinkBtn").onclick = saveLink;
+  el("linkNotebookSelect").onchange = () => {
+    if (el("linkNotebookSelect").value !== "__new__") return;
+
+    pendingLinkDraft = {
+      url: el("linkUrlInput").value,
+      title: el("linkTitleInput").value,
+      note: el("linkNoteInput").value,
+      notebookId: state.currentNotebookId,
+    };
+    returnToLinkAfterNotebookCreate = true;
+    el("linkDialog").close();
+
+    selectedNotebookColor = "sand";
+    document.querySelectorAll(".notebook-color-option").forEach(button => {
+      button.classList.toggle("active", button.dataset.notebookColor === "sand");
+    });
+    el("notebookNameInput").value = "";
+    el("notebookDialog").showModal();
+    setTimeout(() => el("notebookNameInput").focus(), 40);
+  };
   el("linkUrlInput").addEventListener("paste", () => {
     setTimeout(() => {
       const url = normalizedLinkUrl(el("linkUrlInput").value);
