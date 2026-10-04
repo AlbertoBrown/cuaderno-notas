@@ -1,8 +1,8 @@
-const CACHE = "cuaderno-notas-v32";
+const CACHE = "cuaderno-notas-v33";
 const SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=32",
+  "./styles.css?v=33",
   "./manifest.webmanifest",
   "./icon.svg",
   "./js/app.js?v=32",
