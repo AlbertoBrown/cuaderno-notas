@@ -1644,7 +1644,14 @@ body.calendar-dragging .calendar-day-cell{
     height:29px;
     flex:0 0 29px;
     border-width:1.5px;
+    border-color:rgba(17,17,17,.42);
     box-shadow:none;
+    color:#111 !important;
+    opacity:1;
+    font-family:Arial,"Helvetica Neue",sans-serif;
+    font-weight:800;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:geometricPrecision;
   }
 
   .nav-item .nav-label{
@@ -1676,6 +1683,7 @@ body.calendar-dragging .calendar-day-cell{
 
   .nav-item.active .nav-icon{
     border-color:#111;
+    color:#111 !important;
     box-shadow:0 0 0 2px rgba(17,17,17,.07);
   }
 
@@ -1687,5 +1695,14 @@ body.calendar-dragging .calendar-day-cell{
 @media(max-width:390px){
   .nav-item .nav-label{
     font-size:8.75px;
+  }
+}
+
+
+/* Bottom nav icon contrast · v34 */
+@media(max-width:720px){
+  .side-nav .nav-item .nav-icon{
+    color:#111 !important;
+    opacity:1 !important;
   }
 }
