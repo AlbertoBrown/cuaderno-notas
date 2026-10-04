@@ -66,9 +66,23 @@ function serializeDayPromptItems(day) {
   return JSON.stringify({ version: 2, items: safeItems });
 }
 
+export function buildNotebookRow(notebook, userId) {
+  return {
+    user_id: userId,
+    id: notebook.id,
+    nombre: notebook.nombre || "Nuevo cuaderno",
+    icono: notebook.icono || "▤",
+    color: notebook.color || "sand",
+    is_default: Boolean(notebook.isDefault),
+    created_at: notebook.createdAt || new Date().toISOString(),
+    updated_at: notebook.updatedAt || new Date().toISOString(),
+  };
+}
+
 export function buildDayRow(day, userId) {
   return {
     user_id: userId,
+    notebook_id: day.notebookId,
     fecha: day.fecha,
     prompt: serializeDayPromptItems(day),
     apuntes: day.apuntes || "",
@@ -82,6 +96,7 @@ export function buildNoteRow(note, userId, hasVisualColumns) {
   const row = {
     id: note.id,
     user_id: userId,
+    notebook_id: note.notebookId,
     fecha: note.fecha,
     tipo: note.tipo || "note",
     titulo: note.titulo || "",
