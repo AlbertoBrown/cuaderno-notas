@@ -4,8 +4,13 @@ import {
   loadCache,
   migrateLegacyLocalStorage,
   ensureDay,
+  dayForDate,
   notesForDate,
   allVisualNotes,
+  currentNotebook,
+  notebooksList,
+  putNotebook,
+  setCurrentNotebook,
   putDay,
   putNote,
   markDayPending,
@@ -76,6 +81,7 @@ let editingDayPromptId = null;
 let editorHomeMarker = null;
 let calendarMonthKey = state.selectedDate.slice(0, 7);
 let calendarDetailExpanded = false;
+let selectedNotebookColor = "sand";
 
 function toKey(date) {
   const y = date.getFullYear();
@@ -101,6 +107,180 @@ function escapeHtml(value = "") {
     '"': "&quot;",
     "'": "&#039;",
   })[char]);
+}
+
+function notesInCurrentNotebook() {
+  return [...state.notes.values()].filter(note =>
+    note.notebookId === state.currentNotebookId && !note.deleted
+  );
+}
+
+function daysInCurrentNotebook() {
+  return [...state.days.values()].filter(day =>
+    day.notebookId === state.currentNotebookId
+  );
+}
+
+function notebookActivity(notebookId) {
+  let latest = 0;
+  for (const day of state.days.values()) {
+    if (day.notebookId !== notebookId) continue;
+    latest = Math.max(latest, Date.parse(day.updatedAt || 0) || 0);
+  }
+  for (const note of state.notes.values()) {
+    if (note.notebookId !== notebookId || note.deleted) continue;
+    latest = Math.max(latest, Date.parse(note.updatedAt || note.createdAt || 0) || 0);
+  }
+  return latest;
+}
+
+function notebookSlug(name) {
+  const base = String(name || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "cuaderno";
+
+  if (!state.notebooks.has(base)) return base;
+  return `${base}-${crypto.randomUUID().slice(0, 6)}`;
+}
+
+function renderNotebookChrome() {
+  const notebook = currentNotebook();
+  const label = el("notebookNameLabel");
+  const back = el("notebookBackBtn");
+  const search = el("searchInput")?.closest(".search-box");
+  const today = el("todayBtn");
+
+  document.body.classList.toggle("notebook-picker-open", state.showingNotebooks);
+
+  if (label) {
+    label.textContent = state.showingNotebooks
+      ? "Cuaderno"
+      : (notebook?.nombre || "Cuaderno");
+  }
+  if (back) back.hidden = state.showingNotebooks;
+  if (search) search.hidden = state.showingNotebooks;
+  if (today) today.hidden = state.showingNotebooks;
+
+  if (state.showingNotebooks) {
+    el("pageTitle").innerHTML = "Mis cuadernos<span>.</span>";
+  }
+}
+
+function renderNotebooksView() {
+  const view = el("notebooksView");
+  const grid = el("notebooksGrid");
+  if (!view || !grid) return;
+
+  view.hidden = !state.showingNotebooks;
+  if (!state.showingNotebooks) return;
+
+  grid.replaceChildren();
+
+  for (const notebook of notebooksList()) {
+    const notes = [...state.notes.values()].filter(note =>
+      note.notebookId === notebook.id && !note.deleted
+    ).length;
+    const days = [...state.days.values()].filter(day =>
+      day.notebookId === notebook.id &&
+      (
+        day.apuntes ||
+        day.conclusiones ||
+        (day.prompts || []).length ||
+        (day.tareas || []).length
+      )
+    ).length;
+    const activity = notebookActivity(notebook.id);
+    const activityText = activity
+      ? formatDate(new Date(activity), { day: "2-digit", month: "short" })
+      : "Sin actividad";
+
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "notebook-card";
+    card.dataset.notebookId = notebook.id;
+    card.dataset.color = notebook.color || "sand";
+    card.innerHTML = `
+      <div class="notebook-card-top">
+        <span class="notebook-card-icon">${escapeHtml(notebook.icono || "▤")}</span>
+        <span class="notebook-card-arrow">↗</span>
+      </div>
+      <div class="notebook-card-body">
+        <h3>${escapeHtml(notebook.nombre)}</h3>
+        <p>${notebook.isDefault ? "Cuaderno principal" : "Espacio independiente"}</p>
+      </div>
+      <div class="notebook-card-meta">
+        <span>${notes} nota${notes === 1 ? "" : "s"}</span>
+        <span>${days} día${days === 1 ? "" : "s"}</span>
+        <span>${activityText}</span>
+      </div>
+    `;
+    card.onclick = () => openNotebook(notebook.id);
+    grid.appendChild(card);
+  }
+
+  const notice = el("notebookCloudNotice");
+  if (notice) {
+    notice.hidden = state.notebookSchemaReady !== false;
+  }
+}
+
+async function openNotebook(id) {
+  const changed = await setCurrentNotebook(id);
+  if (!changed) return;
+
+  state.showingNotebooks = false;
+  state.currentView = "today";
+  state.currentFilter = "all";
+  state.searchTerm = "";
+  state.selectedDate = toKey(new Date());
+  ensureDay(state.selectedDate);
+
+  if (el("searchInput")) el("searchInput").value = "";
+  setVisualEditUI?.(null);
+  renderAll();
+}
+
+function openNotebookPicker() {
+  state.showingNotebooks = true;
+  renderAll();
+}
+
+async function createNotebook() {
+  const input = el("notebookNameInput");
+  const name = input?.value.trim();
+  if (!name) {
+    input?.focus();
+    return;
+  }
+
+  const now = nowIso();
+  const notebook = {
+    id: notebookSlug(name),
+    nombre: name,
+    icono: selectedNotebookColor === "blue" ? "</>" : "▤",
+    color: selectedNotebookColor,
+    isDefault: false,
+    createdAt: now,
+    updatedAt: now,
+    syncStatus: "pending",
+    syncError: null,
+  };
+
+  await putNotebook(notebook);
+  el("notebookDialog")?.close();
+  if (input) input.value = "";
+  selectedNotebookColor = "sand";
+  document.querySelectorAll(".notebook-color-option").forEach(button => {
+    button.classList.toggle("active", button.dataset.notebookColor === "sand");
+  });
+
+  renderNotebooksView();
+  syncSoon();
+  toast("Cuaderno creado", "success");
 }
 
 function parseNormalNoteContent(value = "") {
