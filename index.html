@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="apple-touch-icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=34" />
+  <link rel="stylesheet" href="styles.css?v=35" />
 </head>
 <body>
   <div class="app-shell">
@@ -48,8 +48,9 @@
 
     <main class="workspace">
       <header class="topbar">
-        <div>
-          <span class="eyebrow">Cuaderno de control</span>
+        <div class="topbar-title-wrap">
+          <button id="notebookBackBtn" class="notebook-back-btn" type="button">← Cuadernos</button>
+          <span id="notebookNameLabel" class="eyebrow">Combustibles Los Baldíos</span>
           <h1 id="pageTitle">Mis notas<span>.</span></h1>
         </div>
         <div class="top-actions">
@@ -62,6 +63,22 @@
           <button id="accountBtn" class="ghost-btn account-btn">Iniciar sesión</button>
         </div>
       </header>
+
+      <section id="notebooksView" class="notebooks-view" hidden>
+        <div class="notebooks-hero">
+          <div>
+            <span class="eyebrow">Espacios de trabajo</span>
+            <h2>Mis cuadernos<span>.</span></h2>
+            <p>Cada cuaderno mantiene sus días, notas, prompts, incidencias y fotos separados.</p>
+          </div>
+          <button id="newNotebookBtn" class="primary-btn notebook-new-btn" type="button">+ Nuevo cuaderno</button>
+        </div>
+        <div id="notebooksGrid" class="notebooks-grid"></div>
+        <div id="notebookCloudNotice" class="notebook-cloud-notice" hidden>
+          <strong>Guardado local activo.</strong>
+          <span>La separación de cuadernos todavía no está disponible en la nube.</span>
+        </div>
+      </section>
 
       <section id="dateStrip" class="date-strip">
         <div class="date-nav">
@@ -473,7 +490,34 @@
     </form>
   </dialog>
 
+  <dialog id="notebookDialog" class="notebook-dialog">
+    <form method="dialog" class="notebook-dialog-card">
+      <div class="dialog-head">
+        <div>
+          <span class="eyebrow">Nuevo espacio</span>
+          <h2>Crear cuaderno<span>.</span></h2>
+        </div>
+        <button value="cancel" class="dialog-close" type="submit" aria-label="Cerrar">×</button>
+      </div>
+      <label class="notebook-field">
+        <span>Nombre</span>
+        <input id="notebookNameInput" type="text" maxlength="60" placeholder="Ej. Ideas, Clientes, DAW..." autocomplete="off" />
+      </label>
+      <div class="notebook-color-row" role="group" aria-label="Color del cuaderno">
+        <button class="notebook-color-option active" type="button" data-notebook-color="sand" aria-label="Arena"><span></span></button>
+        <button class="notebook-color-option" type="button" data-notebook-color="blue" aria-label="Azul"><span></span></button>
+        <button class="notebook-color-option" type="button" data-notebook-color="green" aria-label="Verde"><span></span></button>
+        <button class="notebook-color-option" type="button" data-notebook-color="peach" aria-label="Melocotón"><span></span></button>
+        <button class="notebook-color-option" type="button" data-notebook-color="purple" aria-label="Morado"><span></span></button>
+      </div>
+      <div class="dialog-actions">
+        <button value="cancel" class="ghost-btn" type="submit">Cancelar</button>
+        <button id="createNotebookBtn" class="primary-btn" type="button">Crear cuaderno</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="js/app.js?v=32"></script>
+  <script type="module" src="js/app.js?v=35"></script>
 </body>
 </html>
