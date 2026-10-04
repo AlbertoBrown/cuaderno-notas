@@ -1415,6 +1415,7 @@ function renderLinkNotebookOptions(selectedId = state.currentNotebookId) {
 }
 
 function openLinkDialog(prefill = {}) {
+  el("linkDialog").dataset.editingId = prefill.editingId || "";
   renderLinkNotebookOptions(prefill.notebookId || state.currentNotebookId);
   el("linkUrlInput").value = prefill.url || "";
   el("linkTitleInput").value = prefill.title || "";
@@ -1464,8 +1465,8 @@ function renderLinks() {
         title: link.titulo,
         note: link.nota,
         notebookId: link.notebookId,
+        editingId: link.id,
       });
-      el("linkDialog").dataset.editingId = link.id;
     };
 
     card.querySelector(".delete-saved-link").onclick = async () => {
@@ -1972,6 +1973,7 @@ function bindEvents() {
       title: el("linkTitleInput").value,
       note: el("linkNoteInput").value,
       notebookId: state.currentNotebookId,
+      editingId: el("linkDialog").dataset.editingId || "",
     };
     returnToLinkAfterNotebookCreate = true;
     el("linkDialog").close();
@@ -1993,6 +1995,8 @@ function bindEvents() {
     }, 0);
   });
   el("newNotebookBtn").onclick = () => {
+    returnToLinkAfterNotebookCreate = false;
+    pendingLinkDraft = null;
     selectedNotebookColor = "sand";
     document.querySelectorAll(".notebook-color-option").forEach(button => {
       button.classList.toggle("active", button.dataset.notebookColor === "sand");
