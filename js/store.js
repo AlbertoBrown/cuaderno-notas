@@ -1,5 +1,5 @@
 const DB_NAME = "cuaderno-notas-db";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export const DEFAULT_NOTEBOOK_ID = "combustibles-los-baldios";
 export const DEFAULT_NOTEBOOKS = [
@@ -51,6 +51,13 @@ function openDb() {
         if (!db.objectStoreNames.contains("notebooks")) {
           const notebooks = db.createObjectStore("notebooks", { keyPath: "id" });
           notebooks.createIndex("syncStatus", "syncStatus", { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains("links")) {
+          const links = db.createObjectStore("links", { keyPath: "id" });
+          links.createIndex("notebookId", "notebookId", { unique: false });
+          links.createIndex("syncStatus", "syncStatus", { unique: false });
+          links.createIndex("createdAt", "createdAt", { unique: false });
         }
 
         if (!db.objectStoreNames.contains("meta")) {
@@ -136,6 +143,23 @@ function normalizeNote(note) {
   };
 }
 
+function normalizeLink(link) {
+  return {
+    ...link,
+    id: String(link?.id || crypto.randomUUID()),
+    notebookId: link?.notebookId || link?.notebook_id || DEFAULT_NOTEBOOK_ID,
+    url: String(link?.url || "").trim(),
+    titulo: String(link?.titulo || "").trim(),
+    nota: String(link?.nota || ""),
+    etiquetas: Array.isArray(link?.etiquetas) ? link.etiquetas : [],
+    createdAt: link?.createdAt || link?.created_at || nowIso(),
+    updatedAt: link?.updatedAt || link?.updated_at || nowIso(),
+    syncStatus: link?.syncStatus || "pending",
+    syncError: link?.syncError || null,
+    deleted: Boolean(link?.deleted),
+  };
+}
+
 export const state = {
   user: null,
   selectedDate: new Date().toISOString().slice(0, 10),
@@ -148,6 +172,7 @@ export const state = {
   notebookSchemaReady: null,
   days: new Map(),
   notes: new Map(),
+  links: new Map(),
   syncStatus: "local",
   online: navigator.onLine,
 };
@@ -183,11 +208,12 @@ export async function loadCache() {
   const db = await openDb();
   if (!db) return state;
 
-  const [notebooks, notebookDays, legacyDays, notes, selectedNotebookId] = await Promise.all([
+  const [notebooks, notebookDays, legacyDays, notes, links, selectedNotebookId] = await Promise.all([
     withStore("notebooks", "readonly", store => requestResult(store?.getAll())),
     withStore("notebook_days", "readonly", store => requestResult(store?.getAll())),
     withStore("days", "readonly", store => requestResult(store?.getAll())),
     withStore("notes", "readonly", store => requestResult(store?.getAll())),
+    withStore("links", "readonly", store => requestResult(store?.getAll())),
     getMeta("current-notebook-id"),
   ]);
 
@@ -233,6 +259,12 @@ export async function loadCache() {
     }
   }
 
+  state.links = new Map();
+  for (const raw of links || []) {
+    const link = normalizeLink(raw);
+    state.links.set(link.id, link);
+  }
+
   state.currentNotebookId =
     selectedNotebookId && state.notebooks.has(selectedNotebookId)
       ? selectedNotebookId
@@ -272,6 +304,24 @@ export async function putNote(note) {
 export async function deleteNoteLocal(id) {
   state.notes.delete(id);
   await withStore("notes", "readwrite", store => store?.delete(id));
+}
+
+export async function putLink(link) {
+  const normalized = normalizeLink(link);
+  state.links.set(normalized.id, normalized);
+  await withStore("links", "readwrite", store => store?.put(normalized));
+  return normalized;
+}
+
+export async function deleteLinkLocal(id) {
+  state.links.delete(id);
+  await withStore("links", "readwrite", store => store?.delete(id));
+}
+
+export function linksForNotebook(notebookId = state.currentNotebookId) {
+  return [...state.links.values()]
+    .filter(link => link.notebookId === notebookId && !link.deleted)
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
 
 export async function deleteDayLocal(fecha, notebookId = state.currentNotebookId) {

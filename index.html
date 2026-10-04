@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="apple-touch-icon" href="icon.svg" />
-  <link rel="stylesheet" href="styles.css?v=36" />
+  <link rel="stylesheet" href="styles.css?v=37" />
 </head>
 <body>
   <div class="app-shell">
@@ -33,6 +33,7 @@
         <button class="nav-item" data-view="prompts" aria-label="Prompts"><span class="nav-icon">◌</span><span class="nav-label">Prompts</span></button>
         <button class="nav-item" data-view="incidents" aria-label="Incidencias"><span class="nav-icon">!</span><span class="nav-label">Incidencias</span></button>
         <button class="nav-item" data-view="visual" aria-label="Fotos"><span class="nav-icon">▧</span><span class="nav-label">Fotos</span></button>
+        <button class="nav-item" data-view="links" aria-label="Enlaces"><span class="nav-icon">↗</span><span class="nav-label">Enlaces</span></button>
       </nav>
 
       <div class="sidebar-footer">
@@ -69,7 +70,7 @@
           <div>
             <span class="eyebrow">Espacios de trabajo</span>
             <h2>Mis cuadernos<span>.</span></h2>
-            <p>Cada cuaderno mantiene sus días, notas, prompts, incidencias y fotos separados.</p>
+            <p>Cada cuaderno mantiene sus días, notas, prompts, incidencias, fotos y enlaces separados.</p>
           </div>
           <button id="newNotebookBtn" class="primary-btn notebook-new-btn" type="button">+ Nuevo cuaderno</button>
         </div>
@@ -386,6 +387,19 @@
           <div id="visualNotesList" class="visual-notes-list"></div>
         </section>
       </section>
+
+      <section id="linksView" class="links-view" hidden>
+        <div class="links-page-head">
+          <div>
+            <span class="eyebrow">Enlaces</span>
+            <h2>Enlaces guardados<span>.</span></h2>
+            <p>Guarda páginas, documentación, vídeos o cualquier recurso dentro del cuaderno que elijas.</p>
+          </div>
+          <button id="newLinkBtn" class="primary-btn" type="button">+ Guardar enlace</button>
+        </div>
+        <div id="linksList" class="links-list"></div>
+      </section>
+
     </main>
   </div>
 
@@ -490,6 +504,44 @@
     </form>
   </dialog>
 
+
+  <dialog id="linkDialog" class="link-dialog">
+    <div class="link-dialog-card">
+      <div class="dialog-head">
+        <div>
+          <span class="eyebrow">Nuevo recurso</span>
+          <h2>Guardar enlace<span>.</span></h2>
+        </div>
+        <button id="closeLinkDialogBtn" class="dialog-close" type="button" aria-label="Cerrar">×</button>
+      </div>
+
+      <label class="link-field">
+        <span>URL</span>
+        <input id="linkUrlInput" type="url" inputmode="url" autocapitalize="off" autocomplete="url" placeholder="https://..." />
+      </label>
+
+      <label class="link-field">
+        <span>Título</span>
+        <input id="linkTitleInput" type="text" maxlength="180" placeholder="Ej. Documentación de Supabase" />
+      </label>
+
+      <label class="link-field">
+        <span>Nota <small>Opcional</small></span>
+        <textarea id="linkNoteInput" maxlength="1200" placeholder="¿Por qué quieres guardar este enlace?"></textarea>
+      </label>
+
+      <label class="link-field">
+        <span>Guardar en</span>
+        <select id="linkNotebookSelect"></select>
+      </label>
+
+      <div class="link-dialog-actions">
+        <button id="cancelLinkBtn" class="ghost-btn" type="button">Cancelar</button>
+        <button id="saveLinkBtn" class="primary-btn" type="button">Guardar enlace</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="notebookDialog" class="notebook-dialog">
     <form method="dialog" class="notebook-dialog-card">
       <div class="dialog-head">
@@ -518,6 +570,6 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="js/app.js?v=35"></script>
+  <script type="module" src="js/app.js?v=37"></script>
 </body>
 </html>

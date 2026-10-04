@@ -120,6 +120,20 @@ export function buildDayRow(day, userId, hasNotebookSchema = true) {
   return row;
 }
 
+export function buildLinkRow(link, userId) {
+  return {
+    id: link.id,
+    user_id: userId,
+    notebook_id: link.notebookId,
+    url: link.url,
+    titulo: link.titulo || "",
+    nota: link.nota || "",
+    etiquetas: Array.isArray(link.etiquetas) ? link.etiquetas : [],
+    created_at: link.createdAt || new Date().toISOString(),
+    updated_at: link.updatedAt || new Date().toISOString(),
+  };
+}
+
 export function buildNoteRow(note, userId, hasVisualColumns, hasNotebookSchema = true) {
   const row = {
     id: note.id,

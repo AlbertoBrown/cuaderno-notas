@@ -1,11 +1,14 @@
 {
   "name": "Cuaderno · Notas diarias",
   "short_name": "Cuaderno",
-  "description": "Cuaderno diario para apuntes, incidencias y control de errores.",
+  "description": "Cuaderno diario para notas, incidencias, fotos, enlaces y recursos guardados.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
   "background_color": "#f4f1e8",
   "theme_color": "#111111",
   "orientation": "portrait-primary",
@@ -16,5 +19,15 @@
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "./?share=1",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }
