@@ -233,7 +233,6 @@ async function openNotebook(id) {
   if (!changed) return;
 
   state.showingNotebooks = false;
-  state.currentView = "today";
   state.currentFilter = "all";
   state.searchTerm = "";
   state.selectedDate = toKey(new Date());
@@ -241,6 +240,7 @@ async function openNotebook(id) {
 
   if (el("searchInput")) el("searchInput").value = "";
   setVisualEditUI?.(null);
+  showView("today");
   renderAll();
 }
 
@@ -1353,6 +1353,7 @@ function renderCalendarView() {
 }
 
 function showView(view) {
+  state.showingNotebooks = false;
   state.currentView = view;
   const visual = view === "visual";
   const calendar = view === "calendar";
@@ -1371,6 +1372,17 @@ function showView(view) {
 }
 
 function renderAll() {
+  renderNotebookChrome();
+
+  if (state.showingNotebooks) {
+    el("notebooksView").hidden = false;
+    renderNotebooksView();
+    setCloudUI();
+    return;
+  }
+
+  el("notebooksView").hidden = true;
+
   if (state.currentView === "calendar") {
     renderCalendarView();
   } else {
@@ -1421,7 +1433,8 @@ function syncSoon() {
       });
     }
     setCloudUI();
-    if (state.currentView === "visual") renderVisualNotes();
+    if (state.showingNotebooks) renderNotebooksView();
+    else if (state.currentView === "visual") renderVisualNotes();
     else if (state.currentView === "calendar") renderCalendarView();
     else renderNotes();
   });
@@ -1733,6 +1746,32 @@ async function addNormalNote() {
 }
 
 function bindEvents() {
+  el("notebookBackBtn").onclick = openNotebookPicker;
+  el("newNotebookBtn").onclick = () => {
+    selectedNotebookColor = "sand";
+    document.querySelectorAll(".notebook-color-option").forEach(button => {
+      button.classList.toggle("active", button.dataset.notebookColor === "sand");
+    });
+    el("notebookNameInput").value = "";
+    el("notebookDialog").showModal();
+    setTimeout(() => el("notebookNameInput").focus(), 40);
+  };
+  el("createNotebookBtn").onclick = createNotebook;
+  el("notebookNameInput").addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      createNotebook();
+    }
+  });
+  document.querySelectorAll(".notebook-color-option").forEach(button => {
+    button.onclick = () => {
+      selectedNotebookColor = button.dataset.notebookColor || "sand";
+      document.querySelectorAll(".notebook-color-option").forEach(item => {
+        item.classList.toggle("active", item === button);
+      });
+    };
+  });
+
   el("prevDay").onclick = () => {
     const date = fromKey(state.selectedDate);
     date.setDate(date.getDate() - 1);
@@ -2057,6 +2096,7 @@ function bindEvents() {
   document.querySelectorAll(".nav-item").forEach(button => {
     button.onclick = () => {
       const view = button.dataset.view;
+      state.showingNotebooks = false;
       showView(view);
       if (view === "today") {
         state.selectedDate = toKey(new Date());
