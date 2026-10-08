@@ -130,3 +130,8 @@
     init();
   }
 })();
+
+// Mejoras de interacción de Cuaderno: enlaces de un clic y orden manual de fotos.
+import("./cuaderno-enhancements.js?v=1").catch(error => {
+  console.warn("No se pudieron cargar las mejoras de Cuaderno", error);
+});
