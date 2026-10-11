@@ -29,6 +29,7 @@ import {
 let realtimeChannel = null;
 let realtimeRefreshTimer = null;
 let syncing = false;
+let rerunRequested = false;
 
 function parseRemoteDayPrompts(value, fecha, fallbackDate) {
   const raw = String(value || "").trim();
@@ -152,7 +153,7 @@ function remoteNoteToLocal(row, hasNotebookSchema = true) {
 }
 
 function localNoteForRemote(note, hasVisualColumns) {
-  let safe = { ...note };
+  const safe = { ...note };
 
   if (note.tipo === "visual") {
     const visualPayload = {
@@ -173,6 +174,28 @@ function localNoteForRemote(note, hasVisualColumns) {
     state.user.id,
     hasVisualColumns,
     state.notebookSchemaReady !== false,
+  );
+}
+
+function errorText(error) {
+  return String(
+    error?.message ||
+    error?.error_description ||
+    error?.error ||
+    error?.statusCode ||
+    "Error desconocido"
+  );
+}
+
+function isPendingStatus(item) {
+  return ["pending", "error"].includes(item?.syncStatus);
+}
+
+function visualNeedsUpload(note) {
+  if (note?.tipo !== "visual" || note?.deleted) return false;
+  return Boolean(
+    note.pendingBlob ||
+    (!note.imagenPath && note.legacyImageData)
   );
 }
 
@@ -198,16 +221,6 @@ async function pushNotebook(notebook) {
     syncStatus: "synced",
     syncError: null,
   });
-}
-
-function errorText(error) {
-  return String(
-    error?.message ||
-    error?.error_description ||
-    error?.error ||
-    error?.statusCode ||
-    "Error desconocido"
-  );
 }
 
 async function pushLink(link) {
@@ -268,13 +281,16 @@ async function ensureVisualImage(note) {
 
   if (current.tipo !== "visual") return current;
 
-  if (!current.imagenPath && current.pendingBlob) {
+  // pendingBlob es la fuente de verdad mientras la foto siga solo en el dispositivo.
+  // Se procesa aunque imagenPath o syncStatus hayan quedado en un estado incoherente.
+  if (current.pendingBlob) {
     const path = await uploadImage({
       userId: state.user.id,
       fecha: current.fecha,
       noteId: current.id,
       blob: current.pendingBlob,
     });
+
     current = {
       ...current,
       imagenPath: path,
@@ -282,6 +298,7 @@ async function ensureVisualImage(note) {
       pendingBlob: null,
       updatedAt: nowIso(),
       syncStatus: "syncing",
+      syncError: null,
     };
     await putNote(current);
   }
@@ -292,8 +309,15 @@ async function ensureVisualImage(note) {
       ...current,
       updatedAt: nowIso(),
       syncStatus: "syncing",
+      syncError: null,
     };
     await putNote(current);
+  }
+
+  if (current.tipo === "visual" && !current.deleted && !current.imagenPath) {
+    throw new Error(
+      "La foto todavía no está en la nube. Mantén Cuaderno abierto con conexión y pulsa Reintentar."
+    );
   }
 
   return current;
@@ -310,7 +334,7 @@ async function pushNote(note, hasVisualColumns, hasNotebookSchema) {
       .eq("user_id", state.user.id);
 
     if (error) {
-      await putNote({ ...note, syncStatus: "error" });
+      await putNote({ ...note, syncStatus: "error", syncError: errorText(error) });
       throw error;
     }
 
@@ -366,10 +390,29 @@ async function pushNote(note, hasVisualColumns, hasNotebookSchema) {
   }
 }
 
+async function runPendingItems(items, handler, failures) {
+  for (const item of items) {
+    try {
+      await handler(item);
+    } catch (error) {
+      failures.push(error);
+      // Un archivo problemático no debe impedir que el resto de fotos/notas suban.
+      console.error("No se pudo sincronizar un elemento; se continuará con los demás", error);
+    }
+  }
+}
+
 export async function pushPending() {
-  if (!state.user || syncing || !navigator.onLine) return;
+  if (!state.user || !navigator.onLine) return;
+
+  if (syncing) {
+    rerunRequested = true;
+    return;
+  }
+
   syncing = true;
   state.syncStatus = "syncing";
+  const failures = [];
 
   try {
     const [hasVisualColumns, hasNotebookSchema] = await Promise.all([
@@ -379,37 +422,66 @@ export async function pushPending() {
     state.notebookSchemaReady = hasNotebookSchema;
 
     const pendingNotebooks = hasNotebookSchema
-      ? [...state.notebooks.values()].filter(notebook =>
-          ["pending", "error"].includes(notebook.syncStatus),
-        )
+      ? [...state.notebooks.values()].filter(isPendingStatus)
       : [];
 
-    const pendingDays = [...state.days.values()].filter(day =>
-      ["pending", "error"].includes(day.syncStatus),
-    );
+    const pendingDays = [...state.days.values()].filter(isPendingStatus);
 
     const pendingNotes = [...state.notes.values()].filter(note =>
-      ["pending", "error"].includes(note.syncStatus),
+      isPendingStatus(note) || visualNeedsUpload(note),
     );
 
-    const pendingLinks = [...state.links.values()].filter(link =>
-      ["pending", "error"].includes(link.syncStatus),
+    const pendingLinks = [...state.links.values()].filter(isPendingStatus);
+
+    await runPendingItems(
+      pendingNotebooks,
+      notebook => pushNotebook(notebook),
+      failures,
+    );
+    await runPendingItems(
+      pendingDays,
+      day => pushDay(day, hasNotebookSchema),
+      failures,
+    );
+    await runPendingItems(
+      pendingNotes,
+      note => pushNote(note, hasVisualColumns, hasNotebookSchema),
+      failures,
+    );
+    await runPendingItems(
+      pendingLinks,
+      link => pushLink(link),
+      failures,
     );
 
-    for (const notebook of pendingNotebooks) await pushNotebook(notebook);
-    for (const day of pendingDays) await pushDay(day, hasNotebookSchema);
-    for (const note of pendingNotes) {
-      await pushNote(note, hasVisualColumns, hasNotebookSchema);
+    if (failures.length) {
+      state.syncStatus = "error";
+      state.lastSyncError =
+        failures.length === 1
+          ? errorText(failures[0])
+          : `${failures.length} elementos siguen pendientes de sincronizar`;
+      throw failures[0];
     }
-    for (const link of pendingLinks) await pushLink(link);
 
     state.syncStatus = "synced";
+    state.lastSyncError = hasNotebookSchema
+      ? null
+      : "La migración de cuadernos todavía no está aplicada en Supabase.";
   } catch (error) {
     state.syncStatus = "error";
-    state.lastSyncError = errorText(error);
+    state.lastSyncError = state.lastSyncError || errorText(error);
     throw error;
   } finally {
     syncing = false;
+
+    if (rerunRequested) {
+      rerunRequested = false;
+      queueMicrotask(() => {
+        pushPending().catch(error => {
+          console.warn("Reintento de sincronización pendiente", error);
+        });
+      });
+    }
   }
 }
 
@@ -446,6 +518,10 @@ async function mergeRemoteLink(remote) {
 async function mergeRemoteNote(remote, hasNotebookSchema) {
   const local = state.notes.get(remote.id);
   const incoming = remoteNoteToLocal(remote, hasNotebookSchema);
+
+  // Nunca sustituimos una foto que aún vive como Blob local por la versión remota.
+  // Es la única copia recuperable si el móvil cerró antes de terminar la subida.
+  if (local?.tipo === "visual" && local?.pendingBlob) return;
 
   if (!local || remoteWins(local, incoming)) {
     await putNote(incoming);
@@ -499,12 +575,7 @@ export async function pullAndMerge() {
     await mergeRemoteNotebook(notebook);
   }
 
-  const remoteDayKeys = new Set();
   for (const day of days || []) {
-    const notebookId = hasNotebookSchema
-      ? (day.notebook_id || DEFAULT_NOTEBOOK_ID)
-      : DEFAULT_NOTEBOOK_ID;
-    remoteDayKeys.add(dayKey(day.fecha, notebookId));
     await mergeRemoteDay(day, hasNotebookSchema);
   }
 
@@ -530,11 +601,13 @@ export async function pullAndMerge() {
     }
   }
 
-  // A synced local item missing remotely is stale; pending/error items are preserved.
+  // Un elemento local sincronizado y ya inexistente remotamente es obsoleto.
+  // Nunca se borran elementos pending/error ni fotos con pendingBlob.
   for (const note of [...state.notes.values()]) {
     if (
       note.syncStatus === "synced" &&
       !note.deleted &&
+      !note.pendingBlob &&
       (hasNotebookSchema || note.notebookId === DEFAULT_NOTEBOOK_ID) &&
       !remoteNoteIds.has(note.id)
     ) {
@@ -550,9 +623,12 @@ export async function pullAndMerge() {
 
 export async function syncNow() {
   if (!state.user || !navigator.onLine) return;
+
+  // Subimos primero para que una foto local nunca sea pisada por una copia remota antigua.
   await pushPending();
   await pullAndMerge();
-  // A remote merge can leave a local pending record intentionally preserved.
+
+  // Un merge remoto puede dejar intencionadamente algún elemento local pendiente.
   await pushPending();
 }
 
@@ -560,6 +636,7 @@ function scheduleRealtimeRefresh(onChange) {
   clearTimeout(realtimeRefreshTimer);
   realtimeRefreshTimer = setTimeout(async () => {
     try {
+      await pushPending();
       await pullAndMerge();
       onChange?.();
     } catch (error) {
@@ -618,7 +695,13 @@ export function startRealtime(onChange) {
       },
       () => scheduleRealtimeRefresh(onChange),
     )
-    .subscribe();
+    .subscribe(status => {
+      if (status === "SUBSCRIBED") {
+        pushPending()
+          .then(() => onChange?.())
+          .catch(error => console.warn("Sincronización inicial pendiente", error));
+      }
+    });
 }
 
 export function stopRealtime() {
@@ -631,29 +714,63 @@ export function stopRealtime() {
 
 export function retryPendingLater(onChange) {
   let attempt = 0;
+  let retryTimer = null;
+  let periodicTimer = null;
+
+  const hasPending = () => [
+    ...state.notebooks.values(),
+    ...state.notes.values(),
+    ...state.links.values(),
+    ...state.days.values(),
+  ].some(item =>
+    isPendingStatus(item) || visualNeedsUpload(item),
+  );
+
+  const schedule = delay => {
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => {
+      run().catch(() => {});
+    }, delay);
+  };
 
   const run = async () => {
-    if (!navigator.onLine || !state.user) return;
-    const pending = [
-      ...state.notebooks.values(),
-      ...state.notes.values(),
-      ...state.links.values(),
-      ...state.days.values(),
-    ].some(item =>
-      ["pending", "error"].includes(item.syncStatus),
-    );
-    if (!pending) return;
+    if (!navigator.onLine || !state.user || !hasPending()) return;
 
     try {
       await pushPending();
       attempt = 0;
       onChange?.();
+
+      if (hasPending()) schedule(1500);
     } catch {
       attempt += 1;
       const delay = Math.min(30000, 1000 * 2 ** attempt);
-      setTimeout(run, delay);
+      schedule(delay);
     }
   };
+
+  const wake = () => {
+    if (!navigator.onLine || !state.user) return;
+    attempt = 0;
+    schedule(50);
+  };
+
+  // iOS puede suspender la PWA pocos segundos después de cambiar de app.
+  // Al volver, al recuperar red o al restaurar la página, reintentamos de inmediato.
+  window.addEventListener("online", wake);
+  window.addEventListener("pageshow", wake);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") wake();
+  });
+
+  // Red de seguridad: mientras la app esté abierta y visible, una foto pendiente
+  // no depende de que el usuario pulse manualmente Actualizar.
+  periodicTimer = setInterval(() => {
+    if (document.visibilityState === "visible" && hasPending()) wake();
+  }, 15000);
+
+  // Evita que el linter/navegador considere el timer no usado y documenta su vida.
+  void periodicTimer;
 
   return run;
 }
