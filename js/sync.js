@@ -188,7 +188,9 @@ function errorText(error) {
 }
 
 function isPendingStatus(item) {
-  return ["pending", "error"].includes(item?.syncStatus);
+  // "syncing" puede quedar persistido si iOS suspende/cierra la PWA a mitad
+  // de una subida. En un nuevo ciclo debe tratarse como recuperable.
+  return ["pending", "syncing", "error"].includes(item?.syncStatus);
 }
 
 function visualNeedsUpload(note) {
