@@ -16,19 +16,93 @@ async function loadBitmap(file) {
       return await createImageBitmap(file);
     } catch {}
   }
+
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
+
     img.onload = () => {
       URL.revokeObjectURL(url);
       resolve(img);
     };
+
     img.onerror = () => {
       URL.revokeObjectURL(url);
       reject(new Error("No se pudo leer la imagen."));
     };
+
     img.src = url;
   });
+}
+
+async function bitmapToJpegBlob(bitmap, {
+  maxSide = null,
+  quality = 0.9,
+} = {}) {
+  const width0 = bitmap.width || bitmap.naturalWidth;
+  const height0 = bitmap.height || bitmap.naturalHeight;
+
+  if (!width0 || !height0) {
+    if (bitmap.close) bitmap.close();
+    throw new Error("La imagen no tiene dimensiones válidas.");
+  }
+
+  const ratio = maxSide
+    ? Math.min(1, maxSide / Math.max(width0, height0))
+    : 1;
+
+  const width = Math.max(1, Math.round(width0 * ratio));
+  const height = Math.max(1, Math.round(height0 * ratio));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext("2d", { alpha: false });
+  if (!ctx) {
+    if (bitmap.close) bitmap.close();
+    throw new Error("No se pudo preparar la imagen para subirla.");
+  }
+
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  if (bitmap.close) bitmap.close();
+
+  const blob = await new Promise(resolve => {
+    canvas.toBlob(resolve, "image/jpeg", quality);
+  });
+
+  if (!blob) {
+    throw new Error("No se pudo convertir la imagen a JPEG.");
+  }
+
+  return { blob, width, height };
+}
+
+async function ensureJpegBlob(blob) {
+  if (!blob) throw new Error("No hay ninguna imagen para subir.");
+
+  // Las imágenes optimizadas por Cuaderno ya son JPEG.
+  if (blob.type === "image/jpeg") return blob;
+
+  // Si llega HEIC/HEIF/PNG/WebP o un Blob sin MIME fiable, lo decodificamos
+  // en el dispositivo y lo re-encodeamos. Así nunca subimos un .HEIC
+  // renombrado como .jpg, algo que en PC puede no mostrarse.
+  try {
+    const bitmap = await loadBitmap(blob);
+    const normalized = await bitmapToJpegBlob(bitmap, {
+      maxSide: 1800,
+      quality: 0.88,
+    });
+    return normalized.blob;
+  } catch (error) {
+    const detail = blob.type ? ` (${blob.type})` : "";
+    const normalizedError = new Error(
+      `No se pudo convertir la foto${detail} a JPEG. ` +
+      "Abre Cuaderno con conexión y vuelve a seleccionar esa foto para reintentarlo."
+    );
+    normalizedError.cause = error;
+    throw normalizedError;
+  }
 }
 
 export const IMAGE_QUALITY_PRESETS = {
@@ -58,60 +132,29 @@ export async function optimizeImage(file, { maxSide = 1400, quality = 0.72 } = {
   }
 
   const bitmap = await loadBitmap(file);
-  const width0 = bitmap.width || bitmap.naturalWidth;
-  const height0 = bitmap.height || bitmap.naturalHeight;
-  const ratio = Math.min(1, maxSide / Math.max(width0, height0));
-  const width = Math.max(1, Math.round(width0 * ratio));
-  const height = Math.max(1, Math.round(height0 * ratio));
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d", { alpha: false });
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  if (bitmap.close) bitmap.close();
-
-  const blob = await new Promise(resolve => {
-    canvas.toBlob(resolve, "image/jpeg", quality);
-  });
-
-  if (!blob) throw new Error("No se pudo optimizar la imagen.");
-  return { blob, width, height };
+  return bitmapToJpegBlob(bitmap, { maxSide, quality });
 }
 
 async function createThumbnailBlob(blob, { maxSide = 360, quality = 0.58 } = {}) {
   const bitmap = await loadBitmap(blob);
-  const width0 = bitmap.width || bitmap.naturalWidth;
-  const height0 = bitmap.height || bitmap.naturalHeight;
-  const ratio = Math.min(1, maxSide / Math.max(width0, height0));
-  const width = Math.max(1, Math.round(width0 * ratio));
-  const height = Math.max(1, Math.round(height0 * ratio));
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d", { alpha: false });
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  if (bitmap.close) bitmap.close();
-
-  const thumb = await new Promise(resolve => {
-    canvas.toBlob(resolve, "image/jpeg", quality);
-  });
-
-  if (!thumb) throw new Error("No se pudo crear la miniatura.");
-  return thumb;
+  const normalized = await bitmapToJpegBlob(bitmap, { maxSide, quality });
+  return normalized.blob;
 }
 
 export function thumbnailPathFor(path) {
   if (!path) return "";
-  return path.endsWith(".jpg") ? path.slice(0, -4) + "-thumb.jpg" : path + "-thumb.jpg";
+  return path.endsWith(".jpg")
+    ? path.slice(0, -4) + "-thumb.jpg"
+    : path + "-thumb.jpg";
 }
 
 export async function uploadImage({ userId, fecha, noteId, blob }) {
+  const jpegBlob = await ensureJpegBlob(blob);
   const path = `${userId}/${fecha}/${noteId}.jpg`;
+
   const { error } = await supabaseClient.storage
     .from(VISUAL_BUCKET)
-    .upload(path, blob, {
+    .upload(path, jpegBlob, {
       contentType: "image/jpeg",
       cacheControl: "31536000",
       upsert: true,
@@ -120,8 +163,9 @@ export async function uploadImage({ userId, fecha, noteId, blob }) {
   if (error) throw error;
 
   try {
-    const thumbBlob = await createThumbnailBlob(blob);
+    const thumbBlob = await createThumbnailBlob(jpegBlob);
     const thumbPath = thumbnailPathFor(path);
+
     const { error: thumbError } = await supabaseClient.storage
       .from(VISUAL_BUCKET)
       .upload(thumbPath, thumbBlob, {
@@ -129,9 +173,14 @@ export async function uploadImage({ userId, fecha, noteId, blob }) {
         cacheControl: "31536000",
         upsert: true,
       });
-    if (thumbError) console.warn("No se pudo subir la miniatura", thumbError);
+
+    if (thumbError) {
+      console.warn("No se pudo subir la miniatura", thumbError);
+    }
+
     signedUrlCache.delete(thumbPath);
   } catch (thumbError) {
+    // La foto principal ya está en la nube. La miniatura se puede reparar después.
     console.warn("No se pudo crear la miniatura", thumbError);
   }
 
@@ -141,16 +190,18 @@ export async function uploadImage({ userId, fecha, noteId, blob }) {
 
 export async function removeImage(path) {
   if (!path) return;
+
   const thumbPath = thumbnailPathFor(path);
   const { error } = await supabaseClient.storage
     .from(VISUAL_BUCKET)
     .remove([path, thumbPath]);
+
   if (error) throw error;
+
   signedUrlCache.delete(path);
   signedUrlCache.delete(thumbPath);
   await clearCachedStoragePath(path);
 }
-
 
 const objectUrlCache = new Map();
 const STORAGE_CACHE = "cuaderno-visual-cache-v1";
@@ -161,6 +212,7 @@ function cacheRequestFor(path) {
 
 async function readBlobFromLocalCache(path) {
   if (!("caches" in window)) return null;
+
   try {
     const cache = await caches.open(STORAGE_CACHE);
     const hit = await cache.match(cacheRequestFor(path));
@@ -172,6 +224,7 @@ async function readBlobFromLocalCache(path) {
 
 async function writeBlobToLocalCache(path, blob) {
   if (!("caches" in window)) return;
+
   try {
     const cache = await caches.open(STORAGE_CACHE);
     await cache.put(
@@ -188,13 +241,16 @@ async function writeBlobToLocalCache(path, blob) {
 
 export async function clearCachedStoragePath(path) {
   if (!path) return;
+
   const keys = [path, thumbnailPathFor(path)];
+
   for (const key of keys) {
     const url = objectUrlCache.get(key);
     if (url) {
       URL.revokeObjectURL(url);
       objectUrlCache.delete(key);
     }
+
     if ("caches" in window) {
       try {
         const cache = await caches.open(STORAGE_CACHE);
@@ -221,6 +277,7 @@ async function downloadStorageBlob(path) {
 
 async function objectUrlForPath(path) {
   if (!path) return "";
+
   const existing = objectUrlCache.get(path);
   if (existing) return existing;
 
@@ -244,6 +301,7 @@ async function createAndUploadMissingThumbnail(path) {
     });
 
   if (error) throw error;
+
   await writeBlobToLocalCache(thumbPath, thumbBlob);
   return thumbBlob;
 }
@@ -279,9 +337,11 @@ export function ensureThumbnailForPath(path) {
   const job = createAndUploadMissingThumbnail(path)
     .then(blob => {
       const thumbPath = thumbnailPathFor(path);
+
       if (blob && !objectUrlCache.has(thumbPath)) {
         objectUrlCache.set(thumbPath, URL.createObjectURL(blob));
       }
+
       return true;
     })
     .catch(error => {
@@ -296,25 +356,34 @@ export function ensureThumbnailForPath(path) {
 
 export function dataUrlToBlob(dataUrl) {
   if (!dataUrl) return null;
+
   const [header, body] = dataUrl.split(",");
   if (!body) return null;
+
   const mime = (header.match(/data:(.*?);base64/) || [])[1] || "image/jpeg";
   const binary = atob(body);
   const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
   return new Blob([bytes], { type: mime });
 }
 
 export async function migrateLegacyVisualImage(note, userId) {
   if (!note?.legacyImageData || note.imagenPath || !userId) return note;
+
   const blob = dataUrlToBlob(note.legacyImageData);
   if (!blob) return note;
+
   const path = await uploadImage({
     userId,
     fecha: note.fecha,
     noteId: note.id,
     blob,
   });
+
   return {
     ...note,
     imagenPath: path,
