@@ -135,3 +135,10 @@
 import("./cuaderno-enhancements-v3.js?v=3").catch(error => {
   console.warn("No se pudieron cargar las mejoras de Cuaderno", error);
 });
+
+// Vía de rescate independiente para fotos que hayan quedado atrapadas localmente
+// en iOS. No depende del sincronizador general y nunca elimina el Blob hasta que
+// Storage y cuaderno_notas confirman la subida.
+import("./photo-rescue.js?v=1").catch(error => {
+  console.warn("No se pudo cargar el rescate de fotos", error);
+});
