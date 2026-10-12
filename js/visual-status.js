@@ -143,6 +143,11 @@ import("./visual-organizer.js?v=2").catch(error => {
   console.warn("No se pudo cargar la organización visual", error);
 });
 
+// Mejora visual de las tarjetas y botón Eliminar claramente visible.
+import("./visual-card-ui.js?v=1").catch(error => {
+  console.warn("No se pudo cargar la mejora visual de las tarjetas", error);
+});
+
 // Vía de rescate independiente para fotos que hayan quedado atrapadas localmente
 // en iOS. No depende del sincronizador general y nunca elimina el Blob hasta que
 // Storage y cuaderno_notas confirman la subida.
