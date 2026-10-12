@@ -132,13 +132,14 @@
 })();
 
 // Mejoras de interacción de Cuaderno: enlaces de un clic y orden manual de fotos.
-import("./cuaderno-enhancements-v3.js?v=3").catch(error => {
+// v4 evita reinsertar continuamente las tarjetas y mantiene operativos sus botones.
+import("./cuaderno-enhancements-v4.js?v=4").catch(error => {
   console.warn("No se pudieron cargar las mejoras de Cuaderno", error);
 });
 
 // Organización de apuntes visuales por categoría y fecha.
 // Reutiliza `etiqueta` y `fecha`, que ya se sincronizan con Supabase.
-import("./visual-organizer.js?v=1").catch(error => {
+import("./visual-organizer.js?v=2").catch(error => {
   console.warn("No se pudo cargar la organización visual", error);
 });
 
