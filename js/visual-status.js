@@ -136,6 +136,12 @@ import("./cuaderno-enhancements-v3.js?v=3").catch(error => {
   console.warn("No se pudieron cargar las mejoras de Cuaderno", error);
 });
 
+// Organización de apuntes visuales por categoría y fecha.
+// Reutiliza `etiqueta` y `fecha`, que ya se sincronizan con Supabase.
+import("./visual-organizer.js?v=1").catch(error => {
+  console.warn("No se pudo cargar la organización visual", error);
+});
+
 // Vía de rescate independiente para fotos que hayan quedado atrapadas localmente
 // en iOS. No depende del sincronizador general y nunca elimina el Blob hasta que
 // Storage y cuaderno_notas confirman la subida.
